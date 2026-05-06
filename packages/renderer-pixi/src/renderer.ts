@@ -4,6 +4,8 @@ import { computePlayfieldTransform, queryVisibleTimeRange } from '@oszillator/co
 import { getSliderPositionAtDistance } from '@oszillator/slider-geometry';
 import type { GameplayState, PreparedBeatmap, PreparedObject } from '@oszillator/ruleset-std';
 
+import { approachCircleRadius, includeActiveLongObjectStartIndex, objectRenderAlpha } from './visibility';
+
 export type RenderSettings = {
   width: number;
   height: number;
@@ -77,11 +79,11 @@ export class PixiPlayfieldRenderer {
       input.gameTimeMs + input.beatmap.difficulty.preemptMs,
       (object) => object.startTimeMs
     );
-    const activeStartIndex = this.includeActiveLongObjects(input.beatmap.objects, visible.startIndex, input.gameTimeMs - 200);
+    const activeStartIndex = includeActiveLongObjectStartIndex(input.beatmap.objects, visible.startIndex, input.gameTimeMs - 200);
     for (let index = activeStartIndex; index < visible.endIndex; index += 1) {
       const object = input.beatmap.objects[index];
       if (object) {
-        this.drawObject(object, input.gameTimeMs, input.beatmap.difficulty.preemptMs, transform);
+        this.drawObject(object, input.gameTimeMs, input.beatmap.difficulty.preemptMs, input.beatmap.difficulty.fadeInMs, transform);
       }
     }
 
@@ -103,13 +105,18 @@ export class PixiPlayfieldRenderer {
     object: PreparedObject,
     gameTimeMs: number,
     preemptMs: number,
+    fadeInMs: number,
     transform: ReturnType<typeof computePlayfieldTransform>
   ): void {
-    const alpha = this.objectAlpha(object, gameTimeMs);
+    const alpha = objectRenderAlpha(object, gameTimeMs, preemptMs, fadeInMs);
+    if (alpha <= 0) {
+      return;
+    }
+
     const positionX = transform.offsetX + object.position.x * transform.scale;
     const positionY = transform.offsetY + object.position.y * transform.scale;
     const radius = object.radius * transform.scale;
-    const approachRadius = this.approachRadius(object, gameTimeMs, radius, preemptMs);
+    const approachRadius = approachCircleRadius(object.startTimeMs, gameTimeMs, radius, preemptMs);
 
     if (object.kind === 'slider') {
       this.drawSlider(object, gameTimeMs, transform, alpha, radius, approachRadius);
@@ -222,22 +229,6 @@ export class PixiPlayfieldRenderer {
       .stroke({ color: 0xfffbeb, alpha, width: Math.max(2, size * 0.16) });
   }
 
-  private approachRadius(object: PreparedObject, gameTimeMs: number, radius: number, preemptMs: number): number {
-    const timeUntilHitMs = Math.max(object.startTimeMs - gameTimeMs, 0);
-    const progress = clamp(1 - timeUntilHitMs / Math.max(1, preemptMs), 0, 1);
-    return radius * (1 + (1 - progress) * 2.7);
-  }
-
-  private objectAlpha(object: PreparedObject, gameTimeMs: number): number {
-    if (gameTimeMs > object.endTimeMs + 220) {
-      return 0;
-    }
-
-    const fadeInProgress = clamp(1 - (object.startTimeMs - gameTimeMs) / 600, 0.18, 1);
-    const fadeOutProgress = gameTimeMs <= object.endTimeMs ? 1 : clamp(1 - (gameTimeMs - object.endTimeMs) / 220, 0, 1);
-    return fadeInProgress * fadeOutProgress;
-  }
-
   private drawPlayfield(settings: RenderSettings, transform: ReturnType<typeof computePlayfieldTransform>): void {
     if (
       this.lastPlayfieldWidth === settings.width &&
@@ -255,17 +246,5 @@ export class PixiPlayfieldRenderer {
       .rect(transform.offsetX, transform.offsetY, transform.width, transform.height)
       .fill({ color: 0x111827, alpha: Math.max(0.1, 1 - settings.backgroundDim) })
       .stroke({ color: 0x64748b, alpha: 0.5, width: 1 });
-  }
-
-  private includeActiveLongObjects(objects: readonly PreparedObject[], startIndex: number, cutoffTimeMs: number): number {
-    let index = startIndex;
-    while (index > 0) {
-      const previous = objects[index - 1];
-      if (!previous || previous.endTimeMs < cutoffTimeMs) {
-        break;
-      }
-      index -= 1;
-    }
-    return index;
   }
 }
