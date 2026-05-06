@@ -541,22 +541,6 @@ const setupStageMedia = (beatmap: BeatmapManifestEntry | null): void => {
   }
 
   stageMediaElement.innerHTML = '';
-  if (beatmap.backgroundPath) {
-    const backgroundUrl = createObjectUrlForArchiveEntry(beatmap.backgroundPath);
-    if (backgroundUrl) {
-      const backgroundElement = document.createElement('img');
-      backgroundElement.src = backgroundUrl;
-      backgroundElement.alt = '';
-      backgroundElement.decoding = 'async';
-      backgroundElement.className = 'stage-background';
-      backgroundElement.addEventListener('error', () => {
-        state.errors.push(`Background unavailable: ${beatmap.backgroundPath}`);
-        renderDebug(true);
-      });
-      stageMediaElement.append(backgroundElement);
-    }
-  }
-
   if (beatmap.videoPath) {
     const videoUrl = createObjectUrlForArchiveEntry(beatmap.videoPath);
     if (videoUrl) {
@@ -571,6 +555,23 @@ const setupStageMedia = (beatmap: BeatmapManifestEntry | null): void => {
         renderDebug(true);
       });
       stageMediaElement.append(videoElement);
+      return;
+    }
+  }
+
+  if (beatmap.backgroundPath) {
+    const backgroundUrl = createObjectUrlForArchiveEntry(beatmap.backgroundPath);
+    if (backgroundUrl) {
+      const backgroundElement = document.createElement('img');
+      backgroundElement.src = backgroundUrl;
+      backgroundElement.alt = '';
+      backgroundElement.decoding = 'async';
+      backgroundElement.className = 'stage-background';
+      backgroundElement.addEventListener('error', () => {
+        state.errors.push(`Background unavailable: ${beatmap.backgroundPath}`);
+        renderDebug(true);
+      });
+      stageMediaElement.append(backgroundElement);
     }
   }
 };

@@ -75,7 +75,8 @@ const cyclePalette = (palette: readonly Rgb[], visualTimeMs: number): Rgb => {
 };
 
 const easeOutCubic = (value: number): number => 1 - (1 - value) ** 3;
-const JUDGED_OBJECT_FADE_MS = 140;
+const smoothstep = (value: number): number => value * value * (3 - 2 * value);
+const JUDGED_OBJECT_FADE_MS = 320;
 
 export const objectVisualColour = (
   palette: readonly Rgb[],
@@ -198,7 +199,8 @@ export class PixiPlayfieldRenderer {
         if (judgedAgeMs !== null && judgedAgeMs >= JUDGED_OBJECT_FADE_MS) {
           continue;
         }
-        const judgedFadeAlpha = judgedAgeMs === null ? 1 : 1 - easeOutCubic(clamp(judgedAgeMs / JUDGED_OBJECT_FADE_MS, 0, 1));
+        const judgedProgress = judgedAgeMs === null ? 0 : clamp(judgedAgeMs / JUDGED_OBJECT_FADE_MS, 0, 1);
+        const judgedFadeAlpha = judgedAgeMs === null ? 1 : 1 - smoothstep(judgedProgress);
         this.drawObject(
           object,
           input.gameTimeMs,
@@ -208,7 +210,8 @@ export class PixiPlayfieldRenderer {
           input.hidden,
           palette,
           input.dynamicColours,
-          judgedFadeAlpha
+          judgedFadeAlpha,
+          judgedProgress
         );
       }
     }
@@ -231,7 +234,8 @@ export class PixiPlayfieldRenderer {
     hidden: boolean,
     palette: readonly Rgb[],
     dynamicColours: boolean,
-    alphaMultiplier = 1
+    alphaMultiplier = 1,
+    judgedProgress = 0
   ): void {
     const alpha = objectRenderAlpha(object, gameTimeMs, preemptMs, fadeInMs, hidden) * alphaMultiplier;
     if (alpha <= 0) {
@@ -254,7 +258,7 @@ export class PixiPlayfieldRenderer {
       return;
     }
 
-    this.drawHitCircle(positionX, positionY, radius, alpha, hidden ? radius : approachRadius, colour);
+    this.drawHitCircle(positionX, positionY, radius, alpha, hidden ? radius : approachRadius, colour, judgedProgress);
   }
 
   private drawHitCircle(
@@ -263,19 +267,30 @@ export class PixiPlayfieldRenderer {
     radius: number,
     alpha: number,
     approachRadius: number,
-    colour: Rgb
+    colour: Rgb,
+    judgedProgress = 0
   ): void {
     const base = rgbToNumber(colour);
     const soft = rgbToNumber(mixRgb(colour, [255, 255, 255], 0.45));
     const deep = rgbToNumber(mixRgb(colour, [12, 18, 28], 0.58));
+    const hitBloom = smoothstep(judgedProgress);
+    const circleRadius = radius * (1 + hitBloom * 0.08);
     if (approachRadius > radius) {
       this.objects.circle(positionX, positionY, approachRadius).stroke({ color: base, alpha: alpha * 0.85, width: 3 });
     }
 
-    this.objects.circle(positionX, positionY, radius).fill({ color: deep, alpha: alpha * 0.78 });
-    this.objects.circle(positionX, positionY, radius).stroke({ color: 0xf8fafc, alpha, width: Math.max(3, radius * 0.12) });
-    this.objects.circle(positionX, positionY, radius * 0.75).fill({ color: base, alpha: alpha * 0.92 });
-    this.objects.circle(positionX, positionY, radius * 0.46).fill({ color: soft, alpha: alpha * 0.58 });
+    if (judgedProgress > 0) {
+      this.objects.circle(positionX, positionY, radius * (1.08 + hitBloom * 0.42)).stroke({
+        color: soft,
+        alpha: alpha * (1 - judgedProgress) * 0.72,
+        width: Math.max(2, radius * 0.05)
+      });
+    }
+
+    this.objects.circle(positionX, positionY, circleRadius).fill({ color: deep, alpha: alpha * 0.78 });
+    this.objects.circle(positionX, positionY, circleRadius).stroke({ color: 0xf8fafc, alpha, width: Math.max(3, radius * 0.12) });
+    this.objects.circle(positionX, positionY, circleRadius * 0.75).fill({ color: base, alpha: alpha * 0.92 });
+    this.objects.circle(positionX, positionY, circleRadius * 0.46).fill({ color: soft, alpha: alpha * 0.58 });
     this.objects.circle(positionX - radius * 0.18, positionY - radius * 0.22, radius * 0.18).fill({ color: 0xffffff, alpha: alpha * 0.34 });
   }
 

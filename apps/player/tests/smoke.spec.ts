@@ -24,4 +24,7 @@ test('boots the player shell', async ({ page }) => {
   await expect(page.locator('.difficulty.active')).toContainText("Imouto's Extra");
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').objects).toBe(669);
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').background).toBe('sola-imoutos-extra/bg.jpg');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').video).toBe('sola-imoutos-extra/video.mp4');
+  await expect(page.locator('#stage video.stage-video')).toHaveCount(1);
+  await expect(page.locator('#stage img.stage-background')).toHaveCount(0);
 });
