@@ -21,15 +21,22 @@ export const objectRenderAlpha = (
   object: Pick<PreparedObject, 'startTimeMs' | 'endTimeMs'>,
   gameTimeMs: number,
   preemptMs: number,
-  fadeInMs: number
+  fadeInMs: number,
+  hidden = false
 ): number => {
   if (gameTimeMs > object.endTimeMs + 220) {
     return 0;
   }
 
   const appearTimeMs = object.startTimeMs - preemptMs;
-  const fadeInProgress =
-    gameTimeMs < object.startTimeMs ? clampRenderValue((gameTimeMs - appearTimeMs) / Math.max(1, fadeInMs), 0, 1) : 1;
+  const fadeInProgress = clampRenderValue((gameTimeMs - appearTimeMs) / Math.max(1, fadeInMs), 0, 1);
+  if (hidden) {
+    const fadeOutStartMs = appearTimeMs + fadeInMs;
+    const fadeOutEndMs = object.startTimeMs - preemptMs * 0.28;
+    const fadeOutProgress = clampRenderValue(1 - (gameTimeMs - fadeOutStartMs) / Math.max(1, fadeOutEndMs - fadeOutStartMs), 0, 1);
+    return fadeInProgress * fadeOutProgress;
+  }
+
   const fadeOutProgress = gameTimeMs <= object.endTimeMs ? 1 : clampRenderValue(1 - (gameTimeMs - object.endTimeMs) / 220, 0, 1);
   return fadeInProgress * fadeOutProgress;
 };

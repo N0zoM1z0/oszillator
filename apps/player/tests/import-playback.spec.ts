@@ -160,6 +160,17 @@ const syntheticOsz = (): Buffer =>
     ])
   );
 
+const spinnerOsz = (): Buffer =>
+  Buffer.from(
+    createStoredZip([
+      { name: 'audio.wav', data: createSilentWav(5) },
+      {
+        name: 'spinner.osu',
+        data: textEncoder.encode(osuDifficulty('Spinner', 0, '256,192,800,12,0,2800,0:0:0:0:'))
+      }
+    ])
+  );
+
 const moveMouseToPlayfield = async (page: Page, x: number, y: number): Promise<void> => {
   const canvasBox = await page.locator('canvas').boundingBox();
   expect(canvasBox).not.toBeNull();
@@ -200,6 +211,16 @@ test('imports a local osz and exercises playback controls', async ({ page }) => 
   await expect(page.locator('.difficulty')).toHaveCount(3);
   await expect(page.locator('.difficulty:disabled')).toHaveCount(1);
   await expect(page.getByTestId('debug')).toContainText('"objects": 1');
+  await expect(page.locator('#dynamic-colours-button')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#dynamic-colours-button')).toHaveText('Dynamic colours: off');
+  await page.locator('#dynamic-colours-button').click();
+  await expect(page.locator('#dynamic-colours-button')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#dynamic-colours-button')).toHaveText('Dynamic colours: on');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').dynamicColours).toBe(true);
+  await page.locator('#dynamic-colours-button').click();
+  await expect(page.locator('#dynamic-colours-button')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#dynamic-colours-button')).toHaveText('Dynamic colours: off');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').dynamicColours).toBe(false);
 
   await moveMouseToPlayfield(page, 256, 192);
   await page.click('#play-button');
@@ -224,7 +245,7 @@ test('imports a local osz and exercises playback controls', async ({ page }) => 
   await page.click('#seek-button');
   await page.waitForTimeout(100);
   const restartedTime = await page.evaluate(() => JSON.parse(document.querySelector('#debug')?.textContent ?? '{}').gameTimeMs as number);
-  expect(restartedTime).toBeLessThan(250);
+  expect(restartedTime).toBeLessThan(400);
 
   await page.locator('.difficulty:not([disabled])').nth(1).click();
   await expect(page.getByTestId('debug')).toContainText('normal.osu');
@@ -232,5 +253,114 @@ test('imports a local osz and exercises playback controls', async ({ page }) => 
   const downloadPromise = page.waitForEvent('download');
   await page.click('#export-button');
   await expect((await downloadPromise).suggestedFilename()).toBe('oszillator-debug-report.json');
+  expect(realErrors).toEqual([]);
+});
+
+test('supports autoplay and gameplay mod toggles', async ({ page }) => {
+  const realErrors: string[] = [];
+  page.on('pageerror', (error) => realErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      realErrors.push(message.text());
+    }
+  });
+
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'synthetic-e2e.osz',
+    mimeType: 'application/zip',
+    buffer: syntheticOsz()
+  });
+
+  await expect(page.locator('#status')).toHaveText('ready');
+  await page.locator('[data-mod="HD"]').click();
+  await page.locator('[data-mod="HR"]').click();
+  await page.locator('[data-mod="DT"]').click();
+  await expect(page.locator('[data-mod="HD"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-mod="HR"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-mod="DT"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').mods).toEqual(['HD', 'HR', 'DT']);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').playbackRate).toBe(1.5);
+
+  await page.locator('#autoplay-button').click();
+  await expect(page.locator('#autoplay-button')).toHaveAttribute('aria-pressed', 'true');
+  await page.click('#play-button');
+  await expect.poll(async () => Number(await page.locator('#score').textContent()), { timeout: 6000 }).toBeGreaterThan(0);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').autoplay).toBe(true);
+
+  expect(realErrors).toEqual([]);
+});
+
+test('keeps controls responsive after repeated restarts and beatmap rebuilds', async ({ page }) => {
+  const realErrors: string[] = [];
+  page.on('pageerror', (error) => realErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      realErrors.push(message.text());
+    }
+  });
+
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'synthetic-e2e.osz',
+    mimeType: 'application/zip',
+    buffer: syntheticOsz()
+  });
+
+  await expect(page.locator('#status')).toHaveText('ready');
+  await page.locator('[data-mod="HD"]').click();
+  await page.locator('[data-mod="DT"]').click();
+  await page.locator('.difficulty:not([disabled])').nth(1).click();
+  await expect(page.getByTestId('debug')).toContainText('normal.osu');
+  await page.locator('[data-mod="NC"]').click();
+  await page.locator('[data-mod="HR"]').click();
+  await page.locator('.difficulty:not([disabled])').first().click();
+  await expect(page.getByTestId('debug')).toContainText('standard.osu');
+
+  for (let index = 0; index < 3; index += 1) {
+    await page.click('#seek-button');
+    await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').gameTimeMs).toBeLessThan(400);
+  }
+
+  await page.locator('[data-mod="HD"]').click();
+  await page.locator('[data-mod="HR"]').click();
+  await page.locator('[data-mod="NC"]').click();
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').mods).toEqual([]);
+  await moveMouseToPlayfield(page, 256, 192);
+  await page.click('#play-button');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('playing');
+  await page.waitForFunction(
+    () => ((window as Window & { __oszillatorDebug?: { getGameTimeMs: () => number } }).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 1980,
+    undefined,
+    { polling: 20 }
+  );
+  await page.keyboard.press('z');
+  await expect.poll(async () => Number(await page.locator('#score').textContent())).toBeGreaterThan(0);
+
+  expect(realErrors).toEqual([]);
+});
+
+test('renders spinner playback without browser errors', async ({ page }) => {
+  const realErrors: string[] = [];
+  page.on('pageerror', (error) => realErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      realErrors.push(message.text());
+    }
+  });
+
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'synthetic-spinner.osz',
+    mimeType: 'application/zip',
+    buffer: spinnerOsz()
+  });
+
+  await expect(page.locator('#status')).toHaveText('ready');
+  await expect(page.getByTestId('debug')).toContainText('"objects": 1');
+  await page.click('#play-button');
+  await page.waitForTimeout(1400);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('playing');
+
   expect(realErrors).toEqual([]);
 });

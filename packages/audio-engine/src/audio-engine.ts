@@ -30,6 +30,8 @@ export class WebAudioEngine {
 
   private pausedAtMs = 0;
 
+  private playbackRate = 1;
+
   constructor(options: AudioEngineOptions = {}) {
     const AudioContextCtor = globalThis.AudioContext ?? globalThis.webkitAudioContext;
     if (!options.audioContext && !AudioContextCtor) {
@@ -67,6 +69,7 @@ export class WebAudioEngine {
     this.stopSource();
     const source = this.context.createBufferSource();
     source.buffer = this.buffer;
+    source.playbackRate.value = this.playbackRate;
     source.connect(this.context.destination);
     source.start(0, Math.max(startTimeMs, 0) / 1000);
     source.onended = () => {
@@ -133,7 +136,8 @@ export class WebAudioEngine {
         {
           contextTimeSeconds: this.context.currentTime,
           playbackStartBeatmapMs: this.playbackStartBeatmapMs,
-          playbackStartContextTimeSeconds: this.playbackStartContextTimeSeconds
+          playbackStartContextTimeSeconds: this.playbackStartContextTimeSeconds,
+          playbackRate: this.playbackRate
         },
         this.offsets
       );
@@ -144,6 +148,30 @@ export class WebAudioEngine {
 
   getState(): AudioEngineState {
     return this.state;
+  }
+
+  getPlaybackRate(): number {
+    return this.playbackRate;
+  }
+
+  setPlaybackRate(rate: number): void {
+    const nextRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
+    if (nextRate === this.playbackRate) {
+      return;
+    }
+
+    const restartAtMs = this.getGameTimeMs();
+    this.playbackRate = nextRate;
+    if (this.source) {
+      this.source.playbackRate.value = nextRate;
+    }
+    if (this.state === 'playing') {
+      this.play(restartAtMs);
+      return;
+    }
+
+    this.pausedAtMs = restartAtMs;
+    this.playbackStartBeatmapMs = restartAtMs;
   }
 
   playHitsound(kind: HitsoundKind = 'normal'): void {

@@ -1,18 +1,42 @@
 # oszillator
 
-`oszillator` is an unofficial, local-first `.osz` web player and trainer for osu!standard-compatible beatmaps.
+An independent, local-first `.osz` player and trainer for osu!standard-style practice.
 
-The MVP keeps all beatmap data on the client. Users import local `.osz` files, the browser parses them, prepares gameplay state, renders the playfield, and stores local settings and scores without online submission.
+Drop a beatmap archive into the browser, pick a difficulty, and play. `oszillator` parses the map locally, keeps the Web Audio clock as the gameplay timeline, renders the playfield with Pixi, and stores practice scores on your machine only.
 
-## Scope
+[![Watch the oszillator autoplay demo](docs/assets/demo-poster.jpg)](https://www.youtube.com/watch?v=0RBsNySsgOs)
 
-- osu!standard only
-- local `.osz` import only
-- no ranking, leaderboard, login, or server sync
-- no bundled official assets
-- no copyrighted map or audio fixtures in the repository
+> Watch the autoplay demo on YouTube: https://www.youtube.com/watch?v=0RBsNySsgOs
 
-## Workspace Commands
+## Highlights
+
+- Local `.osz` import with no account, server sync, or online beatmap download.
+- osu!standard-focused gameplay with circles, sliders, spinners, hit judgements, combo, accuracy, and local scores.
+- Web Audio based timing so judgement uses the audio clock rather than frame deltas.
+- Autoplay showcase mode for hands-free previews and visual demos.
+- Practice modifiers: Hidden, HardRock, Double Time, and Nightcore.
+- Beatmap background image and browser-supported video playback from the imported archive.
+- Dynamic cursor trail, spinner effects, smoke key, hit offset history, and optional dynamic colour cycling.
+- Parser and loader designed to warn and continue when real-world `.osu` files contain unknown fields.
+
+## Controls
+
+- `Z` / `X`: keyboard hit buttons.
+- Mouse / pointer: aim and click.
+- `C`: smoke trail.
+- `Autoplay`: let the trainer perform an idealized replay.
+- `Dynamic colours`: opt into animated palette cycling for cursor and objects.
+
+## Product Boundaries
+
+- osu!standard-style gameplay only.
+- Local archive import only.
+- No ranking, leaderboard, login, server sync, or online score submission.
+- No online beatmap search or download.
+- No official branding or bundled official assets.
+- No copyrighted beatmap, audio, or video fixtures are committed to this repository.
+
+## Development
 
 ```bash
 corepack pnpm install
@@ -23,14 +47,18 @@ corepack pnpm build
 corepack pnpm test:e2e
 ```
 
-## Packages
+## Workspace
 
-- `apps/player`: Vite browser app
-- `packages/core`: shared math, time, playfield, search, and input primitives
-- `packages/osu-parser`: warning-first `.osu` parser
-- `packages/osz-loader`: `.osz` unzip and manifest generation
-- `packages/slider-geometry`: deterministic slider path helpers
-- `packages/ruleset-std`: osu!standard runtime preparation and judgement
-- `packages/audio-engine`: Web Audio clock and playback helpers
-- `packages/renderer-pixi`: Pixi-based debug and gameplay renderer
-- `packages/storage`: local metadata, settings, and scores
+- `apps/player`: Vite browser app and UI orchestration.
+- `packages/audio-engine`: Web Audio clock, playback, offsets, and hitsounds.
+- `packages/core`: shared math, time, playfield transforms, search, and input primitives.
+- `packages/osu-parser`: warning-first `.osu` parser.
+- `packages/osz-loader`: `.osz` unzip and manifest generation.
+- `packages/renderer-pixi`: Pixi gameplay renderer.
+- `packages/ruleset-std`: osu!standard preparation, modifiers, judgement, and scoring.
+- `packages/slider-geometry`: deterministic slider path helpers.
+- `packages/storage`: local metadata, settings, and scores.
+
+## Media
+
+The repository includes a lightweight demo poster in `docs/assets/demo-poster.jpg`. Keep full recordings outside the git history unless there is a strong reason to version them. See [docs/media.md](docs/media.md) for the recommended README video workflow.

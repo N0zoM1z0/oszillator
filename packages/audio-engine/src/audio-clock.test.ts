@@ -15,4 +15,18 @@ describe('audio clock mapping', () => {
       )
     ).toBe(3475);
   });
+
+  it('maps sped-up playback to accelerated beatmap time', () => {
+    expect(
+      mapAudioContextTimeToGameTimeMs(
+        {
+          contextTimeSeconds: 12,
+          playbackStartContextTimeSeconds: 10,
+          playbackStartBeatmapMs: 1000,
+          playbackRate: 1.5
+        },
+        { globalOffsetMs: 0 }
+      )
+    ).toBe(4000);
+  });
 });

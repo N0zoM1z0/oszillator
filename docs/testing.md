@@ -2,8 +2,9 @@
 
 Testing is layered:
 
-- unit tests for parser, timing, geometry, transforms, judgement, scoring, and storage helpers
-- browser smoke tests for boot, import, debug compatibility view, and no-crash flows
-- synthetic fixtures only; real copyrighted `.osz` files stay out of the repository
+- Unit tests cover parser behavior, timing, geometry, transforms, judgement, scoring, modifiers, and storage helpers.
+- Browser tests cover boot, local import, playback controls, autoplay, modifiers, spinner rendering, and no-crash flows.
+- Synthetic fixtures are used for committed tests.
+- Local real-world `.osz` compatibility files stay ignored and outside the repository.
 
 Every bug fix should add a regression test where practical.

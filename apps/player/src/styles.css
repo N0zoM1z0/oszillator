@@ -101,13 +101,15 @@ h2 {
 }
 
 .difficulty-list,
-.toolbar {
+.toolbar,
+.mod-grid {
   display: grid;
   gap: 8px;
 }
 
 .difficulty,
-.toolbar button {
+.toolbar button,
+.mod-toggle {
   border: 1px solid rgba(244, 240, 232, 0.14);
   color: #f4f0e8;
   background: rgba(244, 240, 232, 0.06);
@@ -126,15 +128,31 @@ h2 {
   background: rgba(231, 201, 111, 0.14);
 }
 
-.toolbar button.active {
+.toolbar button.active,
+.mod-toggle.active {
   border-color: #58a666;
   background: rgba(88, 166, 102, 0.2);
 }
 
 .difficulty:disabled,
-.toolbar button:disabled {
+.toolbar button:disabled,
+.mod-toggle:disabled {
   opacity: 0.46;
   cursor: not-allowed;
+}
+
+.mod-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mod-toggle {
+  display: grid;
+  gap: 2px;
+}
+
+.mod-toggle span {
+  color: #aeb7a7;
+  font-size: 11px;
 }
 
 .stage-column {

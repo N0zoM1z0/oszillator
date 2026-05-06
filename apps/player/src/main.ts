@@ -1,8 +1,18 @@
 import { WebAudioEngine } from '@oszillator/audio-engine';
-import { RulesetStdGame, prepareBeatmap, type HitResult, type JudgementEvent, type PreparedBeatmap } from '@oszillator/ruleset-std';
-import { PixiPlayfieldRenderer, type SmokePuff } from '@oszillator/renderer-pixi';
+import type { GameplayButton, GameplayInputEvent, Vec2 } from '@oszillator/core';
+import {
+  RulesetStdGame,
+  prepareBeatmap,
+  type GameplayMod,
+  type HitResult,
+  type JudgementEvent,
+  type PreparedBeatmap,
+  type PreparedObject
+} from '@oszillator/ruleset-std';
+import { PixiPlayfieldRenderer, type CursorTrailPoint, type SmokePuff } from '@oszillator/renderer-pixi';
 import type { OszArchiveManifest, BeatmapManifestEntry } from '@oszillator/osz-loader';
 import { openOszillatorDb, saveBeatmapSet, saveLocalScore } from '@oszillator/storage';
+import { getSliderPositionAtDistance } from '@oszillator/slider-geometry';
 
 import { InputManager } from './input/input-manager';
 import './styles.css';
@@ -56,9 +66,18 @@ let mediaObjectUrls: string[] = [];
 let videoElement: HTMLVideoElement | null = null;
 let smokeActive = false;
 let lastSmokePuffMs = -Infinity;
+let autoplayEnabled = false;
+let autoplayLastTimeMs = 0;
+let autoplayInputId = 0;
+let selectionQueue: Promise<void> = Promise.resolve();
+let selectionRequestId = 0;
+let lastCursorTrailMs = -Infinity;
+let dynamicColoursEnabled = false;
 
 const hitHistory: HitHistoryEntry[] = [];
 const smokePuffs: SmokePuff[] = [];
+const cursorTrail: CursorTrailPoint[] = [];
+const activeMods = new Set<GameplayMod>();
 
 const PLAYFIELD_PADDING_OSU = 72;
 const STAGE_INSET = {
@@ -71,6 +90,11 @@ const OFFSET_RANGE_MS = 160;
 const MAX_HIT_HISTORY = 56;
 const SMOKE_LIFETIME_MS = 900;
 const SMOKE_INTERVAL_MS = 42;
+const SPINNER_AUTOPLAY_STEP_MS = 35;
+const AUTOPLAY_SPINNER_RADIUS = 120;
+const CURSOR_TRAIL_LIFETIME_MS = 260;
+const MAX_CURSOR_TRAIL = 28;
+const AUTOPLAY_AIM_MS = 520;
 
 root.innerHTML = `
   <main class="shell">
@@ -97,7 +121,31 @@ root.innerHTML = `
           <button id="pause-button" type="button" disabled>Pause</button>
           <button id="seek-button" type="button" disabled>Restart</button>
           <button id="loop-button" type="button" aria-pressed="false">Loop</button>
+          <button id="autoplay-button" type="button" aria-pressed="false">Autoplay</button>
           <button id="export-button" type="button">Export report</button>
+        </div>
+      </section>
+      <section>
+        <h2>Mods</h2>
+        <div class="mod-grid">
+          <button class="mod-toggle" type="button" data-mod="HD" aria-pressed="false">
+            <strong>HD</strong><span>Hidden</span>
+          </button>
+          <button class="mod-toggle" type="button" data-mod="HR" aria-pressed="false">
+            <strong>HR</strong><span>HardRock</span>
+          </button>
+          <button class="mod-toggle" type="button" data-mod="DT" aria-pressed="false">
+            <strong>DT</strong><span>Double Time</span>
+          </button>
+          <button class="mod-toggle" type="button" data-mod="NC" aria-pressed="false">
+            <strong>NC</strong><span>Nightcore</span>
+          </button>
+        </div>
+      </section>
+      <section>
+        <h2>Visual</h2>
+        <div class="toolbar">
+          <button id="dynamic-colours-button" type="button" aria-pressed="false">Dynamic colours: off</button>
         </div>
       </section>
     </aside>
@@ -150,7 +198,10 @@ const playButton = document.querySelector<HTMLButtonElement>('#play-button')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause-button')!;
 const seekButton = document.querySelector<HTMLButtonElement>('#seek-button')!;
 const loopButton = document.querySelector<HTMLButtonElement>('#loop-button')!;
+const autoplayButton = document.querySelector<HTMLButtonElement>('#autoplay-button')!;
+const dynamicColoursButton = document.querySelector<HTMLButtonElement>('#dynamic-colours-button')!;
 const exportButton = document.querySelector<HTMLButtonElement>('#export-button')!;
+const modButtons = [...document.querySelectorAll<HTMLButtonElement>('.mod-toggle')];
 
 window.__oszillatorDebug = {
   getGameTimeMs: () => Math.round(audioEngine?.getGameTimeMs() ?? game.getCurrentTimeMs())
@@ -175,13 +226,26 @@ const renderSidebar = (): void => {
       <span>${escapeHtml(beatmap.parsed.metadata.title)} - ${escapeHtml(beatmap.parsed.metadata.artist)}</span>
       <small>${beatmap.parsed.hitObjects.length} objects ${beatmap.supported ? '' : 'unsupported mode'}</small>
     `;
-    button.addEventListener('click', () => selectBeatmap(beatmap));
+    button.addEventListener('click', () => {
+      void requestSelectBeatmap(beatmap);
+    });
     difficultyList.append(button);
   }
 
   playButton.disabled = !state.prepared;
   pauseButton.disabled = !state.prepared;
   seekButton.disabled = !state.prepared;
+  autoplayButton.classList.toggle('active', autoplayEnabled);
+  autoplayButton.setAttribute('aria-pressed', String(autoplayEnabled));
+  dynamicColoursButton.classList.toggle('active', dynamicColoursEnabled);
+  dynamicColoursButton.setAttribute('aria-pressed', String(dynamicColoursEnabled));
+  dynamicColoursButton.textContent = `Dynamic colours: ${dynamicColoursEnabled ? 'on' : 'off'}`;
+  for (const button of modButtons) {
+    const mod = button.dataset.mod as GameplayMod | undefined;
+    const active = mod ? activeMods.has(mod) : false;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
 };
 
 const renderDebug = (force = false): void => {
@@ -203,6 +267,10 @@ const renderDebug = (force = false): void => {
       background: state.selected?.backgroundPath ?? null,
       video: state.selected?.videoPath ?? null,
       audio: audioEngine?.getState() ?? 'idle',
+      autoplay: autoplayEnabled,
+      mods: selectedMods(),
+      dynamicColours: dynamicColoursEnabled,
+      playbackRate: audioEngine?.getPlaybackRate() ?? state.prepared?.timeRate ?? 1,
       gameTimeMs: Math.round(audioEngine?.getGameTimeMs() ?? gameState.currentTimeMs),
       objects: state.prepared?.objects.length ?? 0,
       counts: gameState.score.counts,
@@ -268,6 +336,8 @@ const recordJudgements = (judgements: readonly JudgementEvent[]): void => {
   }
 };
 
+const selectedMods = (): GameplayMod[] => [...activeMods];
+
 const importFile = async (file: File): Promise<void> => {
   state.importStatus = 'reading';
   state.errors = [];
@@ -292,7 +362,7 @@ const importFile = async (file: File): Promise<void> => {
       state.manifest = event.data.manifest as OszArchiveManifest;
       state.importStatus = 'ready';
       void persistImportedLibrary(state.manifest);
-      selectBeatmap(state.manifest.beatmaps.find((beatmap) => beatmap.supported) ?? null);
+      void requestSelectBeatmap(state.manifest.beatmaps.find((beatmap) => beatmap.supported) ?? null);
       worker.terminate();
       renderDebug(true);
       return;
@@ -310,11 +380,33 @@ const importFile = async (file: File): Promise<void> => {
   worker.postMessage({ type: 'import-osz', importId, buffer }, [buffer]);
 };
 
-const selectBeatmap = async (beatmap: BeatmapManifestEntry | null): Promise<void> => {
+const requestSelectBeatmap = (beatmap: BeatmapManifestEntry | null): Promise<void> => {
+  const requestId = ++selectionRequestId;
+  selectionQueue = selectionQueue
+    .catch(() => undefined)
+    .then(async () => {
+      if (requestId !== selectionRequestId) {
+        return;
+      }
+      await selectBeatmap(beatmap, requestId);
+    });
+  return selectionQueue;
+};
+
+const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: number): Promise<void> => {
+  if (requestId !== selectionRequestId) {
+    return;
+  }
+
   await teardownAudio();
+  if (requestId !== selectionRequestId) {
+    return;
+  }
+
   teardownStageMedia();
+  teardownRenderer();
   state.selected = beatmap;
-  state.prepared = beatmap ? prepareBeatmap(beatmap.parsed) : null;
+  state.prepared = beatmap ? prepareBeatmap(beatmap.parsed, { mods: selectedMods() }) : null;
   scoreSavedForDifficulty = null;
   preparedEndTimeMs = state.prepared?.objects.reduce((endTime, object) => Math.max(endTime, object.endTimeMs), 0) ?? 0;
   game = new RulesetStdGame();
@@ -326,7 +418,17 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null): Promise<void
 
   setupStageMedia(beatmap);
   await mountRenderer();
+  if (requestId !== selectionRequestId) {
+    teardownRenderer();
+    return;
+  }
+
   await setupAudio();
+  if (requestId !== selectionRequestId) {
+    await teardownAudio();
+    return;
+  }
+
   renderSidebar();
   renderDebug(true);
 };
@@ -334,8 +436,11 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null): Promise<void
 const resetVisualState = (): void => {
   hitHistory.length = 0;
   smokePuffs.length = 0;
+  cursorTrail.length = 0;
   smokeActive = false;
   lastSmokePuffMs = -Infinity;
+  autoplayLastTimeMs = 0;
+  lastCursorTrailMs = -Infinity;
 };
 
 const setupStageMedia = (beatmap: BeatmapManifestEntry | null): void => {
@@ -477,6 +582,7 @@ const setupAudio = async (): Promise<void> => {
     audioCopy.set(audioBytes);
     const buffer = await audioEngine.load(audioCopy.buffer);
     audioEngine.setBuffer(buffer);
+    audioEngine.setPlaybackRate(state.prepared?.timeRate ?? 1);
   } catch (error) {
     state.errors.push(`Audio unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -497,15 +603,10 @@ const mountRenderer = async (): Promise<void> => {
     return;
   }
 
-  cancelAnimationFrame(rafId);
-  renderer?.destroy();
-  renderer = null;
-  stageElement.querySelectorAll('canvas').forEach((canvas) => canvas.remove());
   const nextRenderer = new PixiPlayfieldRenderer();
   await nextRenderer.mount(stageElement, stageSize());
   renderer = nextRenderer;
 
-  inputManager?.destroy();
   inputManager = new InputManager({
     target: stageElement,
     getScreenRect: stageSize,
@@ -514,11 +615,11 @@ const mountRenderer = async (): Promise<void> => {
       smokeActive = active;
     },
     onInput: (event) => {
-      const judgements = game.handleInput(event);
-      recordJudgements(judgements);
-      if (judgements.some((judgement) => judgement.result !== 'miss')) {
-        audioEngine?.playHitsound('normal');
+      if (autoplayEnabled) {
+        return;
       }
+      const judgements = game.handleInput(event);
+      applyJudgements(judgements);
       renderDebug(true);
     }
   });
@@ -526,15 +627,25 @@ const mountRenderer = async (): Promise<void> => {
   tick();
 };
 
+const teardownRenderer = (): void => {
+  cancelAnimationFrame(rafId);
+  inputManager?.destroy();
+  inputManager = null;
+  renderer?.destroy();
+  renderer = null;
+  stageElement.querySelectorAll('canvas').forEach((canvas) => canvas.remove());
+};
+
 const tick = (): void => {
   if (state.prepared && renderer) {
     const time = audioEngine?.getGameTimeMs() ?? game.getCurrentTimeMs();
     syncStageVideo(time);
-    const scheduledJudgements = game.updateTo(time);
-    recordJudgements(scheduledJudgements);
-    if (scheduledJudgements.some((judgement) => judgement.result !== 'miss')) {
-      audioEngine?.playHitsound('normal');
+    if (autoplayEnabled) {
+      updateAutoplayVisualCursor(time);
     }
+    applyJudgements(autoplayEnabled ? advanceAutoplayTo(time) : []);
+    const scheduledJudgements = game.updateTo(time);
+    applyJudgements(scheduledJudgements);
     if (loopEnabled && state.prepared.objects.length > 0) {
       if (time > preparedEndTimeMs + 1000) {
         audioEngine?.seek(0);
@@ -545,13 +656,19 @@ const tick = (): void => {
     }
     void persistScoreIfComplete();
     const gameState = game.getState();
+    const visualTimeMs = performance.now();
     updateSmokePuffs(time, gameState.cursor);
+    updateCursorTrail(visualTimeMs, gameState.cursor);
     renderer.renderFrame({
       beatmap: state.prepared,
       gameTimeMs: time,
+      visualTimeMs,
       gameplayState: gameState,
       settings: stageSize(),
-      smokePuffs
+      hidden: activeMods.has('HD'),
+      dynamicColours: dynamicColoursEnabled,
+      smokePuffs,
+      cursorTrail
     });
     renderDebug();
   }
@@ -559,8 +676,21 @@ const tick = (): void => {
   rafId = requestAnimationFrame(tick);
 };
 
+const applyJudgements = (judgements: readonly JudgementEvent[]): void => {
+  recordJudgements(judgements);
+  if (judgements.some((judgement) => judgement.result !== 'miss')) {
+    audioEngine?.playHitsound('normal');
+  }
+};
+
 const persistScoreIfComplete = async (): Promise<void> => {
-  if (!state.prepared || !state.selected || scoreSavedForDifficulty === state.selected.normalizedPath) {
+  if (
+    !state.prepared ||
+    !state.selected ||
+    autoplayEnabled ||
+    activeMods.size > 0 ||
+    scoreSavedForDifficulty === state.selected.normalizedPath
+  ) {
     return;
   }
 
@@ -594,6 +724,7 @@ const syncStageVideo = (gameTimeMs: number): void => {
   }
 
   const targetSeconds = (gameTimeMs - state.selected.parsed.events.videoOffsetMs) / 1000;
+  video.playbackRate = state.prepared?.timeRate ?? 1;
   const audioState = audioEngine?.getState() ?? 'idle';
   if (targetSeconds < 0 || audioState !== 'playing') {
     if (!video.paused) {
@@ -619,6 +750,247 @@ const syncStageVideo = (gameTimeMs: number): void => {
   }
 };
 
+type AutoplayAction =
+  | { kind: 'circle'; timeMs: number; object: Extract<PreparedObject, { kind: 'circle' }> }
+  | { kind: 'slider-head'; timeMs: number; object: Extract<PreparedObject, { kind: 'slider' }> }
+  | { kind: 'slider-checkpoint'; timeMs: number; position: Vec2 }
+  | { kind: 'slider-tail'; timeMs: number; object: Extract<PreparedObject, { kind: 'slider' }>; position: Vec2 }
+  | { kind: 'spinner-head'; timeMs: number; object: Extract<PreparedObject, { kind: 'spinner' }> }
+  | { kind: 'spinner-move'; timeMs: number; position: Vec2 }
+  | { kind: 'spinner-tail'; timeMs: number; object: Extract<PreparedObject, { kind: 'spinner' }> };
+
+const actionPriority = (action: AutoplayAction): number => {
+  if (action.kind === 'slider-checkpoint' || action.kind === 'spinner-move') {
+    return 0;
+  }
+  if (action.kind === 'slider-tail' || action.kind === 'spinner-tail') {
+    return 1;
+  }
+  return 2;
+};
+
+const advanceAutoplayTo = (gameTimeMs: number): JudgementEvent[] => {
+  const beatmap = state.prepared;
+  if (!beatmap) {
+    return [];
+  }
+
+  if (gameTimeMs < autoplayLastTimeMs) {
+    autoplayLastTimeMs = 0;
+  }
+
+  const fromMs = autoplayLastTimeMs;
+  autoplayLastTimeMs = gameTimeMs;
+  if (gameTimeMs <= fromMs) {
+    return [];
+  }
+
+  const actions = collectAutoplayActions(beatmap.objects, fromMs, gameTimeMs);
+  actions.sort((left, right) => left.timeMs - right.timeMs || actionPriority(left) - actionPriority(right));
+
+  const events: JudgementEvent[] = [];
+  for (const action of actions) {
+    events.push(...runAutoplayAction(action));
+  }
+
+  return events;
+};
+
+const collectAutoplayActions = (objects: readonly PreparedObject[], fromMs: number, toMs: number): AutoplayAction[] => {
+  const actions: AutoplayAction[] = [];
+  const renderStates = game.getState().objects;
+
+  for (let index = 0; index < objects.length; index += 1) {
+    const object = objects[index]!;
+    if (object.startTimeMs > toMs) {
+      break;
+    }
+    if (object.endTimeMs < fromMs) {
+      continue;
+    }
+    if (renderStates[index]?.status === 'judged') {
+      continue;
+    }
+
+    if (object.kind === 'circle') {
+      if (isInAutoplayWindow(object.startTimeMs, fromMs, toMs)) {
+        actions.push({ kind: 'circle', timeMs: object.startTimeMs, object });
+      }
+      continue;
+    }
+
+    if (object.kind === 'slider') {
+      if (isInAutoplayWindow(object.startTimeMs, fromMs, toMs)) {
+        actions.push({ kind: 'slider-head', timeMs: object.startTimeMs, object });
+      }
+      for (const checkpoint of object.checkpoints) {
+        if (isInAutoplayWindow(checkpoint.time, fromMs, toMs)) {
+          actions.push({ kind: 'slider-checkpoint', timeMs: checkpoint.time, position: checkpoint.position });
+        }
+      }
+      if (isInAutoplayWindow(object.endTimeMs, fromMs, toMs)) {
+        actions.push({ kind: 'slider-tail', timeMs: object.endTimeMs, object, position: sliderPositionAt(object, object.endTimeMs) });
+      }
+      continue;
+    }
+
+    if (isInAutoplayWindow(object.startTimeMs, fromMs, toMs)) {
+      actions.push({ kind: 'spinner-head', timeMs: object.startTimeMs, object });
+    }
+
+    const firstMove = Math.max(object.startTimeMs, Math.floor(fromMs / SPINNER_AUTOPLAY_STEP_MS) * SPINNER_AUTOPLAY_STEP_MS);
+    for (let timeMs = firstMove; timeMs <= Math.min(object.endTimeMs, toMs); timeMs += SPINNER_AUTOPLAY_STEP_MS) {
+      if (timeMs > fromMs && timeMs >= object.startTimeMs) {
+        actions.push({ kind: 'spinner-move', timeMs, position: spinnerAutoplayPosition(timeMs) });
+      }
+    }
+
+    if (isInAutoplayWindow(object.endTimeMs, fromMs, toMs)) {
+      actions.push({ kind: 'spinner-tail', timeMs: object.endTimeMs, object });
+    }
+  }
+
+  return actions;
+};
+
+const isInAutoplayWindow = (timeMs: number, fromMs: number, toMs: number): boolean => timeMs > fromMs && timeMs <= toMs;
+
+const runAutoplayAction = (action: AutoplayAction): JudgementEvent[] => {
+  if (action.kind === 'circle') {
+    emitAutoplayInput('move', action.timeMs, action.object.position);
+    const events = emitAutoplayInput('press', action.timeMs, action.object.position, nextAutoplayKey());
+    emitAutoplayInput('release', action.timeMs, action.object.position, 'K1');
+    emitAutoplayInput('release', action.timeMs, action.object.position, 'K2');
+    return events;
+  }
+
+  if (action.kind === 'slider-head') {
+    emitAutoplayInput('move', action.timeMs, action.object.position);
+    return emitAutoplayInput('press', action.timeMs, action.object.position, nextAutoplayKey());
+  }
+
+  if (action.kind === 'slider-checkpoint') {
+    emitAutoplayInput('move', action.timeMs, action.position);
+    return game.updateTo(action.timeMs);
+  }
+
+  if (action.kind === 'slider-tail') {
+    emitAutoplayInput('move', action.timeMs, action.position);
+    const events = game.updateTo(action.timeMs);
+    emitAutoplayInput('release', action.timeMs, action.position, 'K1');
+    emitAutoplayInput('release', action.timeMs, action.position, 'K2');
+    return events;
+  }
+
+  if (action.kind === 'spinner-head') {
+    return emitAutoplayInput('press', action.timeMs, spinnerAutoplayPosition(action.timeMs), nextAutoplayKey());
+  }
+
+  if (action.kind === 'spinner-move') {
+    const events = game.updateTo(action.timeMs);
+    emitAutoplayInput('move', action.timeMs, action.position);
+    return events;
+  }
+
+  const events = game.updateTo(action.timeMs);
+  emitAutoplayInput('release', action.timeMs, spinnerAutoplayPosition(action.timeMs), 'K1');
+  emitAutoplayInput('release', action.timeMs, spinnerAutoplayPosition(action.timeMs), 'K2');
+  return events;
+};
+
+const updateAutoplayVisualCursor = (gameTimeMs: number): void => {
+  const beatmap = state.prepared;
+  if (!beatmap) {
+    return;
+  }
+
+  const position = autoplayCursorPositionAt(beatmap.objects, gameTimeMs);
+  if (!position) {
+    return;
+  }
+
+  emitAutoplayInput('move', gameTimeMs, position);
+};
+
+const autoplayCursorPositionAt = (objects: readonly PreparedObject[], gameTimeMs: number): Vec2 | null => {
+  let previousPosition: Vec2 = { x: 256, y: 192 };
+  let previousTimeMs = Math.max(0, gameTimeMs - AUTOPLAY_AIM_MS);
+
+  for (const object of objects) {
+    if (gameTimeMs >= object.startTimeMs && gameTimeMs <= object.endTimeMs) {
+      return objectPositionAt(object, gameTimeMs);
+    }
+
+    if (object.startTimeMs > gameTimeMs) {
+      const aimStartMs = Math.max(previousTimeMs, object.startTimeMs - AUTOPLAY_AIM_MS);
+      const progress = easeInOut(clamp01((gameTimeMs - aimStartMs) / Math.max(1, object.startTimeMs - aimStartMs)));
+      return lerpVec2(previousPosition, objectPositionAt(object, object.startTimeMs), progress);
+    }
+
+    previousPosition = objectPositionAt(object, object.endTimeMs);
+    previousTimeMs = object.endTimeMs;
+  }
+
+  return previousPosition;
+};
+
+const objectPositionAt = (object: PreparedObject, gameTimeMs: number): Vec2 => {
+  if (object.kind === 'slider') {
+    return sliderPositionAt(object, gameTimeMs);
+  }
+  if (object.kind === 'spinner') {
+    return spinnerAutoplayPosition(gameTimeMs);
+  }
+  return object.position;
+};
+
+const clamp01 = (value: number): number => Math.min(Math.max(value, 0), 1);
+
+const easeInOut = (value: number): number => (value < 0.5 ? 2 * value * value : 1 - (-2 * value + 2) ** 2 / 2);
+
+const lerpVec2 = (from: Vec2, to: Vec2, progress: number): Vec2 => ({
+  x: from.x + (to.x - from.x) * progress,
+  y: from.y + (to.y - from.y) * progress
+});
+
+const emitAutoplayInput = (
+  kind: GameplayInputEvent['kind'],
+  gameTimestampMs: number,
+  playfieldPosition: Vec2,
+  key?: GameplayButton
+): JudgementEvent[] => {
+  const event: GameplayInputEvent = {
+    id: `autoplay-${autoplayInputId++}`,
+    kind,
+    source: 'keyboard',
+    playfieldPosition,
+    browserTimestampMs: performance.now(),
+    gameTimestampMs
+  };
+  if (key) {
+    event.key = key;
+  }
+  return game.handleInput(event);
+};
+
+const nextAutoplayKey = (): GameplayButton => (autoplayInputId % 2 === 0 ? 'K1' : 'K2');
+
+const sliderPositionAt = (object: Extract<PreparedObject, { kind: 'slider' }>, gameTimeMs: number): Vec2 => {
+  const elapsed = Math.min(Math.max(gameTimeMs - object.startTimeMs, 0), object.endTimeMs - object.startTimeMs);
+  const spanIndex = Math.min(object.repeatCount - 1, Math.floor(elapsed / object.spanDurationMs));
+  const spanProgress = Math.min(Math.max((elapsed - spanIndex * object.spanDurationMs) / Math.max(1, object.spanDurationMs), 0), 1);
+  const distance = spanIndex % 2 === 1 ? object.pixelLength * (1 - spanProgress) : object.pixelLength * spanProgress;
+  return getSliderPositionAtDistance(object.path, distance);
+};
+
+const spinnerAutoplayPosition = (gameTimeMs: number): Vec2 => {
+  const angle = (gameTimeMs / 1000) * Math.PI * 12;
+  return {
+    x: 256 + Math.cos(angle) * AUTOPLAY_SPINNER_RADIUS,
+    y: 192 + Math.sin(angle) * AUTOPLAY_SPINNER_RADIUS
+  };
+};
+
 const updateSmokePuffs = (gameTimeMs: number, cursor: { x: number; y: number }): void => {
   if (smokeActive && gameTimeMs - lastSmokePuffMs >= SMOKE_INTERVAL_MS) {
     smokePuffs.push({ x: cursor.x, y: cursor.y, createdAtMs: gameTimeMs });
@@ -631,6 +1003,25 @@ const updateSmokePuffs = (gameTimeMs: number, cursor: { x: number; y: number }):
   }
   if (smokePuffs.length > 96) {
     smokePuffs.splice(0, smokePuffs.length - 96);
+  }
+};
+
+const updateCursorTrail = (visualTimeMs: number, cursor: { x: number; y: number }): void => {
+  const last = cursorTrail.at(-1);
+  const dx = last ? cursor.x - last.x : Infinity;
+  const dy = last ? cursor.y - last.y : Infinity;
+  const movedEnough = dx * dx + dy * dy >= 0.35;
+  if ((movedEnough || cursorTrail.length === 0) && visualTimeMs - lastCursorTrailMs >= 12) {
+    cursorTrail.push({ x: cursor.x, y: cursor.y, createdAtMs: visualTimeMs });
+    lastCursorTrailMs = visualTimeMs;
+  }
+
+  const firstVisible = cursorTrail.findIndex((point) => visualTimeMs - point.createdAtMs <= CURSOR_TRAIL_LIFETIME_MS);
+  if (firstVisible > 0) {
+    cursorTrail.splice(0, firstVisible);
+  }
+  if (cursorTrail.length > MAX_CURSOR_TRAIL) {
+    cursorTrail.splice(0, cursorTrail.length - MAX_CURSOR_TRAIL);
   }
 };
 
@@ -698,6 +1089,7 @@ seekButton.addEventListener('click', () => {
     scoreSavedForDifficulty = null;
     resetVisualState();
   }
+  renderDebug(true);
 });
 
 loopButton.addEventListener('click', () => {
@@ -705,6 +1097,47 @@ loopButton.addEventListener('click', () => {
   loopButton.setAttribute('aria-pressed', String(loopEnabled));
   loopButton.classList.toggle('active', loopEnabled);
 });
+
+autoplayButton.addEventListener('click', () => {
+  autoplayEnabled = !autoplayEnabled;
+  autoplayLastTimeMs = audioEngine?.getGameTimeMs() ?? game.getCurrentTimeMs();
+  renderSidebar();
+  renderDebug(true);
+});
+
+dynamicColoursButton.addEventListener('click', () => {
+  dynamicColoursEnabled = !dynamicColoursEnabled;
+  renderSidebar();
+  renderDebug(true);
+});
+
+for (const button of modButtons) {
+  button.addEventListener('click', () => {
+    const mod = button.dataset.mod as GameplayMod | undefined;
+    if (!mod) {
+      return;
+    }
+
+    if (activeMods.has(mod)) {
+      activeMods.delete(mod);
+    } else {
+      if (mod === 'DT') {
+        activeMods.delete('NC');
+      }
+      if (mod === 'NC') {
+        activeMods.delete('DT');
+      }
+      activeMods.add(mod);
+    }
+
+    if (state.selected) {
+      void requestSelectBeatmap(state.selected);
+      return;
+    }
+    renderSidebar();
+    renderDebug(true);
+  });
+}
 
 exportButton.addEventListener('click', () => {
   const report = debugElement.textContent ?? '{}';
