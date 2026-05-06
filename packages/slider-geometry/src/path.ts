@@ -1,4 +1,4 @@
-import { distanceVec2, lerpVec2, type Vec2 } from '@oszillator/core';
+import { distanceVec2, lerpVec2, normalizeVec2, scaleVec2, addVec2, type Vec2 } from '@oszillator/core';
 
 import { sampleBezierPath } from './bezier';
 import { sampleCatmullPath } from './catmull';
@@ -66,7 +66,7 @@ export const getSliderPositionAtDistance = (path: SliderPath, distance: number):
   }
 
   if (distance >= path.totalLength) {
-    return path.sampledPoints[path.sampledPoints.length - 1] as Vec2;
+    return extrapolateAfterPathEnd(path, distance);
   }
 
   for (let index = 1; index < path.cumulativeLengths.length; index += 1) {
@@ -99,7 +99,11 @@ export const getSliderPolylineUntilDistance = (path: SliderPath, distance: numbe
   }
 
   if (distance >= path.totalLength) {
-    return [...path.sampledPoints];
+    const points = [...path.sampledPoints];
+    if (distance > path.totalLength) {
+      points.push(extrapolateAfterPathEnd(path, distance));
+    }
+    return points;
   }
 
   const points: Vec2[] = [first];
@@ -124,4 +128,20 @@ export const getSliderPolylineUntilDistance = (path: SliderPath, distance: numbe
   }
 
   return points;
+};
+
+const extrapolateAfterPathEnd = (path: SliderPath, distance: number): Vec2 => {
+  const last = path.sampledPoints[path.sampledPoints.length - 1];
+  if (!last || path.sampledPoints.length < 2 || distance <= path.totalLength) {
+    return last ?? { x: 0, y: 0 };
+  }
+
+  for (let index = path.sampledPoints.length - 2; index >= 0; index -= 1) {
+    const previous = path.sampledPoints[index] as Vec2;
+    if (distanceVec2(previous, last) > 0.001) {
+      return addVec2(last, scaleVec2(normalizeVec2({ x: last.x - previous.x, y: last.y - previous.y }), distance - path.totalLength));
+    }
+  }
+
+  return last;
 };

@@ -171,8 +171,17 @@ test('imports a local osz and exercises playback controls', async ({ page }) => 
   await expect(page.locator('.difficulty:disabled')).toHaveCount(1);
   await expect(page.getByTestId('debug')).toContainText('"objects": 1');
 
+  const canvasBox = await page.locator('canvas').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) {
+    return;
+  }
+  await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
   await page.click('#play-button');
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('playing');
+  await page.waitForFunction(() => JSON.parse(document.querySelector('#debug')?.textContent ?? '{}').gameTimeMs >= 980);
+  await page.keyboard.press('z');
+  await expect.poll(async () => Number(await page.locator('#score').textContent())).toBeGreaterThan(0);
   await page.waitForTimeout(500);
   await page.click('#pause-button');
   await page.waitForTimeout(200);

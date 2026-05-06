@@ -18,6 +18,13 @@ describe('buildSliderPath', () => {
     expect(getSliderPolylineUntilDistance(path, 150)).toEqual([vec2(0, 0), vec2(100, 0), vec2(150, 0)]);
   });
 
+  it('extends rendered polylines when osu pixel length exceeds sampled path length', () => {
+    const path = buildSliderPath('L', [vec2(0, 0), vec2(100, 0)]);
+
+    expect(getSliderPositionAtDistance(path, 150)).toEqual({ x: 150, y: 0 });
+    expect(getSliderPolylineUntilDistance(path, 150)).toEqual([vec2(0, 0), vec2(100, 0), vec2(150, 0)]);
+  });
+
   it('samples bezier paths', () => {
     const path = buildSliderPath('B', [vec2(0, 0), vec2(50, 100), vec2(100, 0)]);
 

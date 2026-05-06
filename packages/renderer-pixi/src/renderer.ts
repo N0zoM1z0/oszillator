@@ -243,7 +243,7 @@ export class PixiPlayfieldRenderer {
     this.lastBackgroundDim = settings.backgroundDim;
     this.playfield.clear();
     this.playfield
-      .rect(transform.offsetX, transform.offsetY, transform.width, transform.height)
+      .rect(transform.outerOffsetX, transform.outerOffsetY, transform.outerWidth, transform.outerHeight)
       .fill({ color: 0x111827, alpha: Math.max(0.1, 1 - settings.backgroundDim) })
       .stroke({ color: 0x64748b, alpha: 0.5, width: 1 });
   }

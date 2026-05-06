@@ -4,11 +4,13 @@ import {
   vec2,
   type GameplayButton,
   type GameplayInputEvent,
-  type PlayfieldTransform
+  type PlayfieldTransform,
+  type ScreenRect
 } from '@oszillator/core';
 
 export type InputManagerOptions = {
   target: HTMLElement;
+  getScreenRect: () => ScreenRect;
   getGameTimeMs: () => number;
   onInput: (event: GameplayInputEvent) => void;
 };
@@ -23,11 +25,13 @@ let inputId = 0;
 export class InputManager {
   private transform: PlayfieldTransform;
 
+  private lastPointer = {
+    screenPosition: vec2(0, 0),
+    playfieldPosition: vec2(256, 192)
+  };
+
   constructor(private readonly options: InputManagerOptions) {
-    this.transform = computePlayfieldTransform({
-      width: options.target.clientWidth || 512,
-      height: options.target.clientHeight || 384
-    });
+    this.transform = computePlayfieldTransform(options.getScreenRect());
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
     options.target.addEventListener('pointermove', this.handlePointerMove);
@@ -37,10 +41,7 @@ export class InputManager {
   }
 
   updateSize(): void {
-    this.transform = computePlayfieldTransform({
-      width: this.options.target.clientWidth || 512,
-      height: this.options.target.clientHeight || 384
-    });
+    this.transform = computePlayfieldTransform(this.options.getScreenRect());
   }
 
   destroy(): void {
@@ -64,10 +65,11 @@ export class InputManager {
   private readonly pointerPosition = (event: PointerEvent) => {
     const rect = this.options.target.getBoundingClientRect();
     const screenPosition = vec2(event.clientX - rect.left, event.clientY - rect.top);
-    return {
+    this.lastPointer = {
       screenPosition,
       playfieldPosition: screenToPlayfield(this.transform, screenPosition)
     };
+    return this.lastPointer;
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -77,7 +79,7 @@ export class InputManager {
     }
     if (key) {
       event.preventDefault();
-      this.emit({ kind: 'press', source: 'keyboard', key });
+      this.emit({ kind: 'press', source: 'keyboard', key, ...this.lastPointer });
     }
   };
 
@@ -85,7 +87,7 @@ export class InputManager {
     const key = keyboardMap.get(event.code);
     if (key) {
       event.preventDefault();
-      this.emit({ kind: 'release', source: 'keyboard', key });
+      this.emit({ kind: 'release', source: 'keyboard', key, ...this.lastPointer });
     }
   };
 

@@ -20,6 +20,15 @@ describe('playfield transforms', () => {
     expect(playfieldPosition.x).toBeCloseTo(256);
     expect(playfieldPosition.y).toBeCloseTo(192);
   });
+
+  it('supports padded outer frames without changing playfield coordinate round trips', () => {
+    const transform = computePlayfieldTransform({ width: 640, height: 512, playfieldPadding: 64 });
+
+    expect(transform.outerWidth).toBeCloseTo(640);
+    expect(transform.width).toBeCloseTo(512);
+    expect(playfieldToScreen(transform, { x: 0, y: 0 })).toEqual({ x: 64, y: 64 });
+    expect(screenToPlayfield(transform, { x: 64, y: 64 })).toEqual({ x: 0, y: 0 });
+  });
 });
 
 describe('binary search helpers', () => {

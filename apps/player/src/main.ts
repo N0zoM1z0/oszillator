@@ -39,6 +39,14 @@ let loopEnabled = false;
 let lastDebugRenderMs = 0;
 let preparedEndTimeMs = 0;
 
+const PLAYFIELD_PADDING_OSU = 72;
+const STAGE_INSET = {
+  top: 28,
+  right: 28,
+  bottom: 18,
+  left: 28
+};
+
 root.innerHTML = `
   <main class="shell">
     <aside class="sidebar">
@@ -292,6 +300,7 @@ const mountRenderer = async (): Promise<void> => {
   inputManager?.destroy();
   inputManager = new InputManager({
     target: stageElement,
+    getScreenRect: stageSize,
     getGameTimeMs: () => audioEngine?.getGameTimeMs() ?? 0,
     onInput: (event) => {
       const judgements = game.handleInput(event);
@@ -364,6 +373,11 @@ const persistScoreIfComplete = async (): Promise<void> => {
 const stageSize = () => ({
   width: Math.max(stageElement.clientWidth, 320),
   height: Math.max(stageElement.clientHeight, 240),
+  playfieldPadding: PLAYFIELD_PADDING_OSU,
+  insetTop: STAGE_INSET.top,
+  insetRight: STAGE_INSET.right,
+  insetBottom: STAGE_INSET.bottom,
+  insetLeft: STAGE_INSET.left,
   backgroundDim: 0.7
 });
 
