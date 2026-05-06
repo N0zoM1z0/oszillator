@@ -4,7 +4,11 @@ An independent, local-first `.osz` player and trainer for osu!standard-style pra
 
 Drop a beatmap archive into the browser, pick a difficulty, and play. `oszillator` parses the map locally, keeps the Web Audio clock as the gameplay timeline, renders the playfield with Pixi, and stores practice scores on your machine only.
 
-[Open the online demo](https://n0zom1z0.github.io/oszillator/)
+## Online Demo
+
+Try the hosted demo here: https://n0zom1z0.github.io/oszillator/
+
+The demo is a static GitHub Pages build of the same local-first player. Import a `.osz` archive from your own machine and the beatmap, background, video, and audio are processed in your browser; the app does not upload beatmap files or submit scores to a server. No sample beatmaps or copyrighted audio are bundled with the hosted site.
 
 [![Watch the oszillator autoplay demo](docs/assets/demo-poster.jpg)](https://www.youtube.com/watch?v=0RBsNySsgOs)
 
