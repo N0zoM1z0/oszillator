@@ -36,6 +36,7 @@ let inputManager: InputManager | null = null;
 let rafId = 0;
 let scoreSavedForDifficulty: string | null = null;
 let loopEnabled = false;
+let lastDebugRenderMs = 0;
 
 root.innerHTML = `
   <main class="shell">
@@ -122,7 +123,13 @@ const renderSidebar = (): void => {
   seekButton.disabled = !state.prepared;
 };
 
-const renderDebug = (): void => {
+const renderDebug = (force = false): void => {
+  const now = performance.now();
+  if (!force && now - lastDebugRenderMs < 250) {
+    return;
+  }
+
+  lastDebugRenderMs = now;
   const gameState = game.getState();
   scoreElement.textContent = String(gameState.score.score);
   accuracyElement.textContent = `${(gameState.score.accuracy * 100).toFixed(2)}%`;
@@ -169,6 +176,7 @@ const importFile = async (file: File): Promise<void> => {
       void persistImportedLibrary(state.manifest);
       selectBeatmap(state.manifest.beatmaps.find((beatmap) => beatmap.supported) ?? null);
       worker.terminate();
+      renderDebug(true);
       return;
     }
 
@@ -197,7 +205,7 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null): Promise<void
   await mountRenderer();
   await setupAudio();
   renderSidebar();
-  renderDebug();
+  renderDebug(true);
 };
 
 const persistImportedLibrary = async (manifest: OszArchiveManifest): Promise<void> => {
@@ -272,7 +280,7 @@ const mountRenderer = async (): Promise<void> => {
       if (judgements.some((judgement) => judgement.result !== 'miss')) {
         audioEngine?.playHitsound('normal');
       }
-      renderDebug();
+      renderDebug(true);
     }
   });
 
@@ -296,10 +304,11 @@ const tick = (): void => {
       }
     }
     void persistScoreIfComplete();
+    const gameState = game.getState();
     renderer.renderFrame({
       beatmap: state.prepared,
       gameTimeMs: time,
-      gameplayState: game.getState(),
+      gameplayState: gameState,
       settings: stageSize()
     });
     renderDebug();

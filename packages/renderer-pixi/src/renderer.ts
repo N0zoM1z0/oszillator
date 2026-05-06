@@ -27,6 +27,10 @@ export class PixiPlayfieldRenderer {
 
   private readonly cursor = new Graphics();
 
+  private width = 0;
+
+  private height = 0;
+
   async mount(element: HTMLElement, settings: RenderSettings): Promise<void> {
     await this.app.init({
       width: settings.width,
@@ -34,12 +38,20 @@ export class PixiPlayfieldRenderer {
       backgroundAlpha: 0,
       preference: 'webgl'
     });
+    this.width = settings.width;
+    this.height = settings.height;
     element.append(this.app.canvas);
     this.app.stage.addChild(this.root);
     this.root.addChild(this.playfield, this.objects, this.cursor);
   }
 
   resize(settings: RenderSettings): void {
+    if (this.width === settings.width && this.height === settings.height) {
+      return;
+    }
+
+    this.width = settings.width;
+    this.height = settings.height;
     this.app.renderer.resize(settings.width, settings.height);
   }
 
@@ -60,10 +72,11 @@ export class PixiPlayfieldRenderer {
       input.gameTimeMs + input.beatmap.difficulty.preemptMs,
       (object) => object.startTimeMs
     );
-    const visibleObjects = input.beatmap.objects.slice(visible.startIndex, visible.endIndex);
-
-    for (const object of visibleObjects) {
-      this.drawObject(object, input.gameTimeMs, transform);
+    for (let index = visible.startIndex; index < visible.endIndex; index += 1) {
+      const object = input.beatmap.objects[index];
+      if (object) {
+        this.drawObject(object, input.gameTimeMs, transform);
+      }
     }
 
     this.cursor.clear();
@@ -81,10 +94,12 @@ export class PixiPlayfieldRenderer {
     const radius = object.radius * transform.scale;
 
     if (object.kind === 'slider') {
-      const points = object.path.sampledPoints.map((point) => this.toScreen(point, transform));
+      const points = object.path.sampledPoints;
       if (points.length > 1) {
-        this.objects.moveTo(points[0]!.x, points[0]!.y);
-        for (const point of points.slice(1)) {
+        const first = this.toScreen(points[0]!, transform);
+        this.objects.moveTo(first.x, first.y);
+        for (let index = 1; index < points.length; index += 1) {
+          const point = this.toScreen(points[index]!, transform);
           this.objects.lineTo(point.x, point.y);
         }
         this.objects.stroke({ color: 0x38bdf8, alpha: 0.55, width: Math.max(4, radius * 0.25) });

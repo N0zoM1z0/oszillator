@@ -5,7 +5,7 @@
 html,
 body,
 #app {
-  min-height: 100%;
+  height: 100%;
   margin: 0;
 }
 
@@ -21,9 +21,10 @@ input {
 }
 
 .shell {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
+  overflow: hidden;
   background:
     linear-gradient(90deg, rgba(17, 19, 15, 0.92), rgba(17, 19, 15, 0.55)),
     radial-gradient(circle at 80% 20%, rgba(88, 166, 102, 0.22), transparent 32%),
@@ -31,10 +32,12 @@ input {
 }
 
 .sidebar {
+  min-height: 0;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 22px;
+  overflow: auto;
   border-right: 1px solid rgba(244, 240, 232, 0.14);
   background: rgba(16, 19, 15, 0.88);
 }
@@ -136,12 +139,13 @@ h2 {
 
 .stage-column {
   min-width: 0;
+  min-height: 0;
   display: grid;
-  grid-template-rows: minmax(320px, 1fr) auto 180px;
+  grid-template-rows: minmax(0, 1fr) auto 180px;
 }
 
 .stage {
-  min-height: 420px;
+  min-height: 0;
   position: relative;
 }
 
@@ -179,13 +183,28 @@ h2 {
 }
 
 @media (max-width: 820px) {
+  html,
+  body,
+  #app {
+    height: auto;
+    min-height: 100%;
+  }
+
   .shell {
+    height: auto;
+    min-height: 100vh;
     grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .sidebar {
+    overflow: visible;
     border-right: 0;
     border-bottom: 1px solid rgba(244, 240, 232, 0.14);
+  }
+
+  .stage-column {
+    grid-template-rows: minmax(360px, 58vh) auto 180px;
   }
 
   .hud {
