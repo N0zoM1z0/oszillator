@@ -424,5 +424,5 @@ test('shows a countdown overlay during long waits', async ({ page }) => {
     { polling: 20 }
   );
   await expect(page.getByTestId('wait-overlay')).toHaveClass(/visible/);
-  await expect(page.locator('#wait-countdown')).toContainText('s');
+  await expect(page.locator('#wait-progress')).toBeVisible();
 });

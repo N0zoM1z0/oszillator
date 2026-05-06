@@ -28,3 +28,24 @@ test('boots the player shell', async ({ page }) => {
   await expect(page.locator('#stage video.stage-video')).toHaveCount(1);
   await expect(page.locator('#stage img.stage-background')).toHaveCount(0);
 });
+
+test('resets showcase playback when switching maps', async ({ page }) => {
+  await page.goto('/');
+
+  await expect(page.locator('#status')).toHaveText('showcase');
+  await expect(page.locator('.difficulty.active')).toContainText('Endless Fear');
+  await page.waitForFunction(
+    () => ((window as Window & { __oszillatorDebug?: { getGameTimeMs: () => number } }).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 2500,
+    undefined,
+    { polling: 20 }
+  );
+
+  await page.locator('.difficulty').nth(1).click();
+  await expect(page.locator('.difficulty.active')).toContainText("Imouto's Extra");
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').gameTimeMs).toBeLessThan(500);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('ready');
+
+  await page.click('#play-button');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('playing');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').gameTimeMs).toBeLessThan(1500);
+});

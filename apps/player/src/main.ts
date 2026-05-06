@@ -174,11 +174,7 @@ root.innerHTML = `
       <div id="stage" class="stage" data-testid="stage">
         <div id="stage-media" class="stage-media" aria-hidden="true"></div>
         <div id="wait-overlay" class="wait-overlay" data-testid="wait-overlay" aria-hidden="true">
-          <div class="wait-card">
-            <span class="wait-kicker">incoming pattern</span>
-            <strong id="wait-countdown">0.0s</strong>
-            <div class="wait-bar" aria-hidden="true"><i id="wait-progress"></i></div>
-          </div>
+          <i id="wait-progress"></i>
         </div>
       </div>
       <div class="hud">
@@ -217,7 +213,6 @@ const comboElement = document.querySelector<HTMLElement>('#combo')!;
 const stageElement = document.querySelector<HTMLDivElement>('#stage')!;
 const stageMediaElement = document.querySelector<HTMLDivElement>('#stage-media')!;
 const waitOverlayElement = document.querySelector<HTMLDivElement>('#wait-overlay')!;
-const waitCountdownElement = document.querySelector<HTMLElement>('#wait-countdown')!;
 const waitProgressElement = document.querySelector<HTMLElement>('#wait-progress')!;
 const count300Element = document.querySelector<HTMLElement>('#count-300')!;
 const count100Element = document.querySelector<HTMLElement>('#count-100')!;
@@ -418,11 +413,10 @@ const renderWaitOverlay = (gameTimeMs: number): void => {
     return;
   }
 
-  const progress = clamp01((gameTimeMs - waitStartMs) / Math.max(1, totalWaitMs));
+  const remainingProgress = clamp01(remainingMs / Math.max(1, totalWaitMs));
   waitOverlayElement.classList.add('visible');
   waitOverlayElement.setAttribute('aria-hidden', 'false');
-  waitCountdownElement.textContent = `${Math.max(0, remainingMs / 1000).toFixed(1)}s`;
-  waitProgressElement.style.transform = `scaleX(${progress.toFixed(4)})`;
+  waitProgressElement.style.transform = `scaleX(${remainingProgress.toFixed(4)})`;
 };
 
 const hideWaitOverlay = (): void => {
@@ -541,11 +535,9 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: nu
 
   teardownStageMedia();
   teardownRenderer();
+  resetShowcasePreview();
   state.selected = beatmap;
   state.prepared = beatmap ? prepareBeatmap(beatmap.parsed, { mods: selectedMods() }) : null;
-  if (!isShowcaseBeatmap(beatmap)) {
-    resetShowcasePreview();
-  }
   scoreSavedForDifficulty = null;
   preparedEndTimeMs = state.prepared?.objects.reduce((endTime, object) => Math.max(endTime, object.endTimeMs), 0) ?? 0;
   game = new RulesetStdGame();
