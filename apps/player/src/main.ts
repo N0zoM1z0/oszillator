@@ -15,6 +15,14 @@ type AppState = {
   errors: string[];
 };
 
+declare global {
+  interface Window {
+    __oszillatorDebug?: {
+      getGameTimeMs: () => number;
+    };
+  }
+}
+
 const root = document.querySelector<HTMLDivElement>('#app');
 
 if (!root) {
@@ -103,6 +111,10 @@ const pauseButton = document.querySelector<HTMLButtonElement>('#pause-button')!;
 const seekButton = document.querySelector<HTMLButtonElement>('#seek-button')!;
 const loopButton = document.querySelector<HTMLButtonElement>('#loop-button')!;
 const exportButton = document.querySelector<HTMLButtonElement>('#export-button')!;
+
+window.__oszillatorDebug = {
+  getGameTimeMs: () => Math.round(audioEngine?.getGameTimeMs() ?? game.getCurrentTimeMs())
+};
 
 const renderSidebar = (): void => {
   statusElement.textContent = state.importStatus;

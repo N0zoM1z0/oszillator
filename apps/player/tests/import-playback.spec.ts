@@ -1,8 +1,18 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+import { computePlayfieldTransform, playfieldToScreen } from '@oszillator/core';
 
 type ZipEntry = {
   name: string;
   data: Uint8Array;
+};
+
+const PLAYFIELD_PADDING_OSU = 72;
+const STAGE_INSET = {
+  top: 28,
+  right: 28,
+  bottom: 18,
+  left: 28
 };
 
 const textEncoder = new TextEncoder();
@@ -144,11 +154,31 @@ const syntheticOsz = (): Buffer =>
     createStoredZip([
       { name: 'audio.wav', data: createSilentWav(8) },
       { name: 'bg.png', data: new Uint8Array([0x89, 0x50, 0x4e, 0x47]) },
-      { name: 'standard.osu', data: textEncoder.encode(osuDifficulty('Standard', 0, '256,192,1000,1,0,0:0:0:0:')) },
-      { name: 'normal.osu', data: textEncoder.encode(osuDifficulty('Normal', 0, '128,192,1200,1,0,0:0:0:0:')) },
+      { name: 'standard.osu', data: textEncoder.encode(osuDifficulty('Standard', 0, '256,192,2000,1,0,0:0:0:0:')) },
+      { name: 'normal.osu', data: textEncoder.encode(osuDifficulty('Normal', 0, '128,192,2200,1,0,0:0:0:0:')) },
       { name: 'unsupported.osu', data: textEncoder.encode(osuDifficulty('Unsupported', 3, '256,192,1000,1,0,0:0:0:0:')) }
     ])
   );
+
+const moveMouseToPlayfield = async (page: Page, x: number, y: number): Promise<void> => {
+  const canvasBox = await page.locator('canvas').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) {
+    return;
+  }
+
+  const transform = computePlayfieldTransform({
+    width: canvasBox.width,
+    height: canvasBox.height,
+    playfieldPadding: PLAYFIELD_PADDING_OSU,
+    insetTop: STAGE_INSET.top,
+    insetRight: STAGE_INSET.right,
+    insetBottom: STAGE_INSET.bottom,
+    insetLeft: STAGE_INSET.left
+  });
+  const screenPosition = playfieldToScreen(transform, { x, y });
+  await page.mouse.move(canvasBox.x + screenPosition.x, canvasBox.y + screenPosition.y);
+};
 
 test('imports a local osz and exercises playback controls', async ({ page }) => {
   const realErrors: string[] = [];
@@ -171,15 +201,14 @@ test('imports a local osz and exercises playback controls', async ({ page }) => 
   await expect(page.locator('.difficulty:disabled')).toHaveCount(1);
   await expect(page.getByTestId('debug')).toContainText('"objects": 1');
 
-  const canvasBox = await page.locator('canvas').boundingBox();
-  expect(canvasBox).not.toBeNull();
-  if (!canvasBox) {
-    return;
-  }
-  await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+  await moveMouseToPlayfield(page, 256, 192);
   await page.click('#play-button');
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('playing');
-  await page.waitForFunction(() => JSON.parse(document.querySelector('#debug')?.textContent ?? '{}').gameTimeMs >= 980);
+  await page.waitForFunction(
+    () => ((window as Window & { __oszillatorDebug?: { getGameTimeMs: () => number } }).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 1980,
+    undefined,
+    { polling: 20 }
+  );
   await page.keyboard.press('z');
   await expect.poll(async () => Number(await page.locator('#score').textContent())).toBeGreaterThan(0);
   await page.waitForTimeout(500);

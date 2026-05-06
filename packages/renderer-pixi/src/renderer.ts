@@ -175,6 +175,7 @@ export class PixiPlayfieldRenderer {
         this.objects.circle(checkpointX, checkpointY, Math.max(3, radius * 0.16)).fill({ color: 0xe0f2fe, alpha: alpha * 0.75 });
       }
       if (checkpoint.kind === 'repeat') {
+        this.drawHitCircle(checkpointX, checkpointY, radius * 0.88, alpha * 0.9, radius * 0.88);
         this.drawRepeatMarker(checkpointX, checkpointY, radius * 0.58, alpha);
       }
     }
