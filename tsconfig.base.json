@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "useDefineForClassFields": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@oszillator/audio-engine": ["packages/audio-engine/src/index.ts"],
+      "@oszillator/core": ["packages/core/src/index.ts"],
+      "@oszillator/osu-parser": ["packages/osu-parser/src/index.ts"],
+      "@oszillator/osz-loader": ["packages/osz-loader/src/index.ts"],
+      "@oszillator/renderer-pixi": ["packages/renderer-pixi/src/index.ts"],
+      "@oszillator/ruleset-std": ["packages/ruleset-std/src/index.ts"],
+      "@oszillator/slider-geometry": ["packages/slider-geometry/src/index.ts"],
+      "@oszillator/storage": ["packages/storage/src/index.ts"]
+    }
+  },
+  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "tests/**/*.ts", "playwright.config.ts", "eslint.config.js"]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@oszillator/player",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:e2e": "playwright test -c ../../playwright.config.ts"
+  },
+  "dependencies": {
+    "@oszillator/audio-engine": "workspace:*",
+    "@oszillator/core": "workspace:*",
+    "@oszillator/osu-parser": "workspace:*",
+    "@oszillator/osz-loader": "workspace:*",
+    "@oszillator/renderer-pixi": "workspace:*",
+    "@oszillator/ruleset-std": "workspace:*",
+    "@oszillator/slider-geometry": "workspace:*",
+    "@oszillator/storage": "workspace:*",
+    "pixi.js": "^8.11.0"
+  }
+}
