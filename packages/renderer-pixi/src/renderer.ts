@@ -47,6 +47,7 @@ const DEFAULT_COMBO_COLOURS: readonly Rgb[] = [
   [137, 255, 154],
   [190, 132, 255]
 ];
+const STATIC_OBJECT_COLOUR: Rgb = [56, 189, 248];
 const STATIC_CURSOR_COLOUR: Rgb = [56, 189, 248];
 
 const rgbToNumber = (rgb: Rgb): number => (rgb[0] << 16) + (rgb[1] << 8) + rgb[2];
@@ -74,6 +75,19 @@ const cyclePalette = (palette: readonly Rgb[], visualTimeMs: number): Rgb => {
 };
 
 const easeOutCubic = (value: number): number => 1 - (1 - value) ** 3;
+
+export const objectVisualColour = (
+  palette: readonly Rgb[],
+  comboIndex: number,
+  dynamicColours: boolean,
+  gameTimeMs: number
+): Rgb => {
+  if (!dynamicColours) {
+    return STATIC_OBJECT_COLOUR;
+  }
+
+  return pulseRgb(colourAt(palette, comboIndex), gameTimeMs, 0.22);
+};
 
 export type SliderVisualMetrics = {
   isCompact: boolean;
@@ -212,8 +226,7 @@ export class PixiPlayfieldRenderer {
     const positionY = transform.offsetY + object.position.y * transform.scale;
     const radius = object.radius * transform.scale;
     const approachRadius = approachCircleRadius(object.startTimeMs, gameTimeMs, radius, preemptMs);
-    const objectColour = colourAt(palette, object.comboIndex);
-    const colour = dynamicColours ? pulseRgb(objectColour, gameTimeMs, 0.22) : objectColour;
+    const colour = objectVisualColour(palette, object.comboIndex, dynamicColours, gameTimeMs);
 
     if (object.kind === 'slider') {
       this.drawSlider(object, gameTimeMs, transform, alpha, radius, hidden ? radius : approachRadius, colour);

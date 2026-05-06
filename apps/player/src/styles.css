@@ -48,15 +48,40 @@ input {
   gap: 12px;
 }
 
+.brand-link,
+.brand-copy {
+  color: inherit;
+  text-decoration: none;
+}
+
+.brand-link {
+  flex: 0 0 auto;
+}
+
+.brand-copy {
+  display: grid;
+  gap: 2px;
+}
+
 .brand-mark {
   width: 42px;
   height: 42px;
-  display: grid;
-  place-items: center;
   border-radius: 50%;
-  background: #e7c96f;
-  color: #151713;
-  font-weight: 800;
+  display: block;
+  object-fit: cover;
+  border: 1px solid rgba(244, 240, 232, 0.34);
+  box-shadow: 0 0 0 2px rgba(231, 201, 111, 0.18), 0 10px 24px rgba(0, 0, 0, 0.34);
+}
+
+.brand-link:hover .brand-mark,
+.brand-link:focus-visible .brand-mark {
+  border-color: #e7c96f;
+  box-shadow: 0 0 0 3px rgba(231, 201, 111, 0.32), 0 12px 28px rgba(0, 0, 0, 0.42);
+}
+
+.brand-copy:hover h1,
+.brand-copy:focus-visible h1 {
+  color: #e7c96f;
 }
 
 h1,

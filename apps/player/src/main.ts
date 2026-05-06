@@ -100,11 +100,13 @@ root.innerHTML = `
   <main class="shell">
     <aside class="sidebar">
       <header class="brand">
-        <div class="brand-mark">O</div>
-        <div>
+        <a class="brand-link" href="https://github.com/N0zoM1z0/oszillator" target="_blank" rel="noreferrer" aria-label="Open oszillator on GitHub">
+          <img class="brand-mark" src="${import.meta.env.BASE_URL}brand-icon.jpg" alt="" />
+        </a>
+        <a class="brand-copy" href="https://github.com/N0zoM1z0/oszillator" target="_blank" rel="noreferrer">
           <h1>oszillator</h1>
           <p>local osu!standard trainer</p>
-        </div>
+        </a>
       </header>
       <label class="drop-zone" data-testid="drop-zone">
         <input id="file-input" type="file" accept=".osz,.zip" />
