@@ -2,6 +2,7 @@ import { WebAudioEngine } from '@oszillator/audio-engine';
 import type { GameplayButton, GameplayInputEvent, Vec2 } from '@oszillator/core';
 import {
   RulesetStdGame,
+  deriveDifficulty,
   prepareBeatmap,
   type GameplayMod,
   type HitResult,
@@ -268,7 +269,7 @@ const renderSidebar = (): void => {
   statusElement.textContent = state.importStatus;
   difficultyList.innerHTML = '';
 
-  const beatmaps = state.manifest?.beatmaps ?? [];
+  const beatmaps = sortedBeatmaps(state.manifest?.beatmaps ?? []);
   if (beatmaps.length === 0) {
     difficultyList.innerHTML = '<p class="empty">No beatmap loaded</p>';
   }
@@ -303,6 +304,31 @@ const renderSidebar = (): void => {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   }
+};
+
+const sortedBeatmaps = (beatmaps: readonly BeatmapManifestEntry[]): BeatmapManifestEntry[] =>
+  [...beatmaps].sort((left, right) => {
+    const leftKey = musicSortKey(left);
+    const rightKey = musicSortKey(right);
+    return (
+      leftKey.localeCompare(rightKey) ||
+      difficultySortValue(left) - difficultySortValue(right) ||
+      left.parsed.metadata.version.localeCompare(right.parsed.metadata.version)
+    );
+  });
+
+const musicSortKey = (beatmap: BeatmapManifestEntry): string =>
+  `${beatmap.parsed.metadata.artist}\u0000${beatmap.parsed.metadata.title}`.toLowerCase();
+
+const difficultySortValue = (beatmap: BeatmapManifestEntry): number => {
+  const difficulty = deriveDifficulty(beatmap.parsed.difficulty);
+  return (
+    difficulty.overallDifficulty * 1.7 +
+    difficulty.approachRate * 1.35 +
+    difficulty.circleSize * 0.9 +
+    difficulty.hpDrainRate * 0.2 +
+    Math.log2(Math.max(1, beatmap.parsed.hitObjects.length)) * 0.6
+  );
 };
 
 const renderDebug = (force = false): void => {
@@ -606,6 +632,9 @@ const mimeTypeForPath = (path: string): string => {
   }
   if (extension === 'ogv') {
     return 'video/ogg';
+  }
+  if (extension === 'avi') {
+    return 'video/x-msvideo';
   }
   if (extension === 'mp4' || extension === 'm4v') {
     return 'video/mp4';

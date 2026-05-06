@@ -2,11 +2,36 @@ import { parseOsu } from '@oszillator/osu-parser';
 import type { BeatmapManifestEntry, OszArchiveManifest } from '@oszillator/osz-loader';
 
 const SHOWCASE_DIR = `${import.meta.env.BASE_URL}showcase`;
-const SHOWCASE_OSU_PATH = 'endless-fear.osu';
-const SHOWCASE_AUDIO_PATH = 'audio.mp3';
-const SHOWCASE_BACKGROUND_PATH = 'BG.jpg';
 
-export const isShowcaseBeatmap = (beatmap: BeatmapManifestEntry | null): boolean => beatmap?.normalizedPath === SHOWCASE_OSU_PATH;
+type ShowcaseAssetSet = {
+  archiveId: string;
+  osuPath: string;
+  audioPath: string;
+  backgroundPath: string;
+  videoPath: string | null;
+};
+
+const SHOWCASES: readonly ShowcaseAssetSet[] = [
+  {
+    archiveId: 'bundled-make-a-move-endless-fear',
+    osuPath: 'endless-fear.osu',
+    audioPath: 'audio.mp3',
+    backgroundPath: 'BG.jpg',
+    videoPath: null
+  },
+  {
+    archiveId: 'bundled-sola-imoutos-extra',
+    osuPath: 'sola-imoutos-extra/imoutos-extra.osu',
+    audioPath: 'sola-imoutos-extra/audio.mp3',
+    backgroundPath: 'sola-imoutos-extra/bg.jpg',
+    videoPath: 'sola-imoutos-extra/video.mp4'
+  }
+];
+
+const SHOWCASE_OSU_PATHS = new Set(SHOWCASES.map((showcase) => showcase.osuPath));
+
+export const isShowcaseBeatmap = (beatmap: BeatmapManifestEntry | null): boolean =>
+  beatmap ? SHOWCASE_OSU_PATHS.has(beatmap.normalizedPath) : false;
 
 const bytesFromResponse = async (response: Response): Promise<Uint8Array> => {
   if (!response.ok) {
@@ -22,42 +47,58 @@ const extensionForPath = (path: string): string => {
 };
 
 export const loadShowcaseManifest = async (): Promise<OszArchiveManifest> => {
-  const [osuBytes, audioBytes, backgroundBytes] = await Promise.all([
-    fetch(`${SHOWCASE_DIR}/${SHOWCASE_OSU_PATH}`).then(bytesFromResponse),
-    fetch(`${SHOWCASE_DIR}/${SHOWCASE_AUDIO_PATH}`).then(bytesFromResponse),
-    fetch(`${SHOWCASE_DIR}/${SHOWCASE_BACKGROUND_PATH}`).then(bytesFromResponse)
-  ]);
-  const parsed = parseOsu(new TextDecoder().decode(osuBytes));
-  const beatmap: BeatmapManifestEntry = {
-    filePath: SHOWCASE_OSU_PATH,
-    normalizedPath: SHOWCASE_OSU_PATH,
-    parsed,
-    audioPath: SHOWCASE_AUDIO_PATH,
-    backgroundPath: SHOWCASE_BACKGROUND_PATH,
-    videoPath: null,
-    customSamplePaths: [],
-    supported: true
-  };
+  const entryBytes: Record<string, Uint8Array> = {};
+  const beatmaps: BeatmapManifestEntry[] = [];
+  const audioCandidates: string[] = [];
+  const imageCandidates: string[] = [];
+  const videoCandidates: string[] = [];
 
-  const entryBytes: Record<string, Uint8Array> = {
-    [SHOWCASE_OSU_PATH]: osuBytes,
-    [SHOWCASE_AUDIO_PATH]: audioBytes,
-    [SHOWCASE_BACKGROUND_PATH]: backgroundBytes
-  };
+  for (const showcase of SHOWCASES) {
+    const paths = [showcase.osuPath, showcase.audioPath, showcase.backgroundPath, showcase.videoPath].filter((path): path is string =>
+      Boolean(path)
+    );
+    const fetched = await Promise.all(paths.map((path) => fetch(`${SHOWCASE_DIR}/${path}`).then(bytesFromResponse)));
+    paths.forEach((path, index) => {
+      entryBytes[path] = fetched[index]!;
+    });
+
+    const osuBytes = entryBytes[showcase.osuPath];
+    if (!osuBytes) {
+      throw new Error(`Showcase beatmap unavailable: ${showcase.osuPath}`);
+    }
+
+    beatmaps.push({
+      filePath: showcase.osuPath,
+      normalizedPath: showcase.osuPath,
+      parsed: parseOsu(new TextDecoder().decode(osuBytes)),
+      audioPath: showcase.audioPath,
+      backgroundPath: showcase.backgroundPath,
+      videoPath: showcase.videoPath,
+      customSamplePaths: [],
+      supported: true
+    });
+    audioCandidates.push(showcase.audioPath);
+    imageCandidates.push(showcase.backgroundPath);
+    if (showcase.videoPath) {
+      videoCandidates.push(showcase.videoPath);
+    }
+  }
+
+  const files = Object.entries(entryBytes).map(([path, bytes]) => ({
+    path,
+    normalizedPath: path,
+    size: bytes.byteLength,
+    extension: extensionForPath(path)
+  }));
 
   return {
-    archiveId: 'bundled-make-a-move-endless-fear',
-    files: [SHOWCASE_OSU_PATH, SHOWCASE_AUDIO_PATH, SHOWCASE_BACKGROUND_PATH].map((path) => ({
-      path,
-      normalizedPath: path,
-      size: entryBytes[path]?.byteLength ?? 0,
-      extension: extensionForPath(path)
-    })),
-    beatmaps: [beatmap],
+    archiveId: 'bundled-showcases',
+    files,
+    beatmaps,
     assets: {
-      audioCandidates: [SHOWCASE_AUDIO_PATH],
-      imageCandidates: [SHOWCASE_BACKGROUND_PATH],
-      videoCandidates: [],
+      audioCandidates,
+      imageCandidates,
+      videoCandidates,
       hitsoundCandidates: []
     },
     entryBytes

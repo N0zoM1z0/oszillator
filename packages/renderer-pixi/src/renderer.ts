@@ -75,6 +75,7 @@ const cyclePalette = (palette: readonly Rgb[], visualTimeMs: number): Rgb => {
 };
 
 const easeOutCubic = (value: number): number => 1 - (1 - value) ** 3;
+const JUDGED_OBJECT_FADE_MS = 140;
 
 export const objectVisualColour = (
   palette: readonly Rgb[],
@@ -189,7 +190,15 @@ export class PixiPlayfieldRenderer {
     for (let index = visible.endIndex - 1; index >= activeStartIndex; index -= 1) {
       const object = input.beatmap.objects[index];
       const renderState = input.gameplayState.objects[index];
-      if (object && renderState?.status !== 'judged') {
+      if (object) {
+        const judgedAgeMs =
+          renderState?.status === 'judged' && typeof renderState.judgedAtMs === 'number'
+            ? input.gameTimeMs - renderState.judgedAtMs
+            : null;
+        if (judgedAgeMs !== null && judgedAgeMs >= JUDGED_OBJECT_FADE_MS) {
+          continue;
+        }
+        const judgedFadeAlpha = judgedAgeMs === null ? 1 : 1 - easeOutCubic(clamp(judgedAgeMs / JUDGED_OBJECT_FADE_MS, 0, 1));
         this.drawObject(
           object,
           input.gameTimeMs,
@@ -198,7 +207,8 @@ export class PixiPlayfieldRenderer {
           transform,
           input.hidden,
           palette,
-          input.dynamicColours
+          input.dynamicColours,
+          judgedFadeAlpha
         );
       }
     }
@@ -220,9 +230,10 @@ export class PixiPlayfieldRenderer {
     transform: ReturnType<typeof computePlayfieldTransform>,
     hidden: boolean,
     palette: readonly Rgb[],
-    dynamicColours: boolean
+    dynamicColours: boolean,
+    alphaMultiplier = 1
   ): void {
-    const alpha = objectRenderAlpha(object, gameTimeMs, preemptMs, fadeInMs, hidden);
+    const alpha = objectRenderAlpha(object, gameTimeMs, preemptMs, fadeInMs, hidden) * alphaMultiplier;
     if (alpha <= 0) {
       return;
     }
@@ -367,21 +378,26 @@ export class PixiPlayfieldRenderer {
     const deep = rgbToNumber(mixRgb(colour, [8, 13, 22], 0.72));
     const spinnerRadius = radius * 3.1;
     const activeProgress = clamp((gameTimeMs - object.startTimeMs) / Math.max(1, object.endTimeMs - object.startTimeMs), 0, 1);
-    const preHitProgress = gameTimeMs < object.startTimeMs ? 1 - clamp((object.startTimeMs - gameTimeMs) / Math.max(1, object.startTimeMs - (object.startTimeMs - 900)), 0, 1) : 1;
+    const preHitProgress = gameTimeMs < object.startTimeMs ? 1 - clamp((object.startTimeMs - gameTimeMs) / 900, 0, 1) : 1;
     const shrinkRadius = spinnerRadius * (1.75 - easeOutCubic(preHitProgress) * 0.72);
+    const progressRadius = spinnerRadius * (1.04 - activeProgress * 0.22);
     const rotation = gameTimeMs / 138;
     const reverseRotation = -gameTimeMs / 178;
+    const ringAlpha = gameTimeMs <= object.endTimeMs ? alpha : alpha * 0.72;
 
-    this.objects.circle(positionX, positionY, spinnerRadius * 1.18).fill({ color: deep, alpha: alpha * 0.22 });
-    this.objects.circle(positionX, positionY, spinnerRadius * 0.74).fill({ color: deep, alpha: alpha * 0.28 });
-    this.objects.circle(positionX, positionY, spinnerRadius).stroke({ color: base, alpha: alpha * 0.62, width: Math.max(3, radius * 0.09) });
-    this.objects.circle(positionX, positionY, spinnerRadius * 0.68).stroke({ color: soft, alpha: alpha * 0.35, width: Math.max(2, radius * 0.04) });
+    this.objects.circle(positionX, positionY, spinnerRadius * 1.2).fill({ color: deep, alpha: ringAlpha * 0.24 });
+    this.objects.circle(positionX, positionY, spinnerRadius * 0.78).fill({ color: deep, alpha: ringAlpha * 0.3 });
+    this.objects.circle(positionX, positionY, spinnerRadius).stroke({ color: base, alpha: ringAlpha * 0.74, width: Math.max(4, radius * 0.11) });
+    this.objects.circle(positionX, positionY, spinnerRadius * 0.68).stroke({ color: soft, alpha: ringAlpha * 0.44, width: Math.max(2, radius * 0.05) });
+    this.objects.circle(positionX, positionY, progressRadius).stroke({ color: 0xf8fafc, alpha: ringAlpha * 0.5, width: Math.max(2, radius * 0.055) });
 
     if (gameTimeMs < object.startTimeMs) {
       this.objects.circle(positionX, positionY, shrinkRadius).stroke({ color: 0xf8fafc, alpha: alpha * 0.84, width: Math.max(3, radius * 0.08) });
+    } else if (gameTimeMs <= object.endTimeMs) {
+      this.objects.circle(positionX, positionY, progressRadius * 0.86).stroke({ color: soft, alpha: alpha * 0.26, width: Math.max(2, radius * 0.04) });
     }
 
-    this.drawArc(positionX, positionY, spinnerRadius * 0.92, rotation, rotation + Math.PI * 1.08, base, alpha * 0.9, Math.max(4, radius * 0.12));
+    this.drawArc(positionX, positionY, spinnerRadius * 0.92, rotation, rotation + Math.PI * 1.08, base, ringAlpha * 0.96, Math.max(4, radius * 0.13));
     this.drawArc(
       positionX,
       positionY,
@@ -389,7 +405,7 @@ export class PixiPlayfieldRenderer {
       reverseRotation,
       reverseRotation + Math.PI * 0.86,
       soft,
-      alpha * 0.74,
+      ringAlpha * 0.82,
       Math.max(3, radius * 0.08)
     );
     this.drawArc(
@@ -399,7 +415,7 @@ export class PixiPlayfieldRenderer {
       -rotation * 0.7,
       -rotation * 0.7 + Math.PI * 0.42,
       0xffffff,
-      alpha * 0.44,
+      ringAlpha * 0.5,
       Math.max(2, radius * 0.05)
     );
 
@@ -409,9 +425,9 @@ export class PixiPlayfieldRenderer {
       this.drawRadialTick(positionX, positionY, spinnerRadius * 0.78, spinnerRadius * 0.88, tickAngle, soft, tickAlpha, Math.max(1.5, radius * 0.035));
     }
 
-    this.objects.circle(positionX, positionY, radius * 0.92).fill({ color: base, alpha: alpha * (0.5 + activeProgress * 0.24) });
-    this.objects.circle(positionX, positionY, radius * 0.42).fill({ color: soft, alpha: alpha * 0.72 });
-    this.objects.circle(positionX, positionY, radius * 1.22).stroke({ color: 0xf8fafc, alpha: alpha * 0.72, width: Math.max(2, radius * 0.045) });
+    this.objects.circle(positionX, positionY, radius * 1.04).fill({ color: base, alpha: ringAlpha * (0.54 + activeProgress * 0.24) });
+    this.objects.circle(positionX, positionY, radius * 0.46).fill({ color: soft, alpha: ringAlpha * 0.76 });
+    this.objects.circle(positionX, positionY, radius * 1.3).stroke({ color: 0xf8fafc, alpha: ringAlpha * 0.8, width: Math.max(2, radius * 0.05) });
   }
 
   private drawSliderPath(

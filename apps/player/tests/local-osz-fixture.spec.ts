@@ -34,7 +34,7 @@ test('imports and plays the local ignored osz compatibility fixture', async ({ p
   const resumedTime = await page.evaluate(() => JSON.parse(document.querySelector('#debug')?.textContent ?? '{}').gameTimeMs as number);
   expect(resumedTime).toBeGreaterThan(pausedTime);
 
-  await page.locator('.difficulty:not([disabled])').nth(1).click();
+  await page.locator('.difficulty:not([disabled])').filter({ hasText: "Akitoshi's Normal" }).click();
   await expect(page.getByTestId('debug')).toContainText('"objects": 87');
 
   expect(realErrors).toEqual([]);

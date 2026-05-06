@@ -126,7 +126,16 @@ const createSilentWav = (seconds: number): Uint8Array => {
   return wav;
 };
 
-const osuDifficulty = (version: string, mode: number, hitObjects: string): string => `osu file format v14
+const osuDifficulty = (
+  version: string,
+  mode: number,
+  hitObjects: string,
+  difficulty: { circleSize: number; overallDifficulty: number; approachRate: number } = {
+    circleSize: 4,
+    overallDifficulty: 6,
+    approachRate: 7
+  }
+): string => `osu file format v14
 [General]
 AudioFilename: audio.wav
 Mode: ${mode}
@@ -136,9 +145,9 @@ Artist: Test Artist
 Creator: Playwright
 Version: ${version}
 [Difficulty]
-CircleSize: 4
-OverallDifficulty: 6
-ApproachRate: 7
+CircleSize: ${difficulty.circleSize}
+OverallDifficulty: ${difficulty.overallDifficulty}
+ApproachRate: ${difficulty.approachRate}
 SliderMultiplier: 1.4
 SliderTickRate: 1
 [Events]
@@ -155,7 +164,12 @@ const syntheticOsz = (): Buffer =>
       { name: 'audio.wav', data: createSilentWav(8) },
       { name: 'bg.png', data: new Uint8Array([0x89, 0x50, 0x4e, 0x47]) },
       { name: 'standard.osu', data: textEncoder.encode(osuDifficulty('Standard', 0, '256,192,2000,1,0,0:0:0:0:')) },
-      { name: 'normal.osu', data: textEncoder.encode(osuDifficulty('Normal', 0, '128,192,2200,1,0,0:0:0:0:')) },
+      {
+        name: 'normal.osu',
+        data: textEncoder.encode(
+          osuDifficulty('Normal', 0, '128,192,2200,1,0,0:0:0:0:', { circleSize: 3, overallDifficulty: 3, approachRate: 3 })
+        )
+      },
       { name: 'unsupported.osu', data: textEncoder.encode(osuDifficulty('Unsupported', 3, '256,192,1000,1,0,0:0:0:0:')) }
     ])
   );
@@ -210,6 +224,7 @@ test('imports a local osz and exercises playback controls', async ({ page }) => 
   await expect(page.locator('#status')).toHaveText('ready');
   await expect(page.locator('.difficulty')).toHaveCount(3);
   await expect(page.locator('.difficulty:disabled')).toHaveCount(1);
+  await expect(page.locator('.difficulty strong')).toHaveText(['Normal', 'Standard', 'Unsupported']);
   await expect(page.getByTestId('debug')).toContainText('"objects": 1');
   await expect(page.locator('#dynamic-colours-button')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#dynamic-colours-button')).toHaveText('Dynamic colours: off');
@@ -247,7 +262,7 @@ test('imports a local osz and exercises playback controls', async ({ page }) => 
   const restartedTime = await page.evaluate(() => JSON.parse(document.querySelector('#debug')?.textContent ?? '{}').gameTimeMs as number);
   expect(restartedTime).toBeLessThan(400);
 
-  await page.locator('.difficulty:not([disabled])').nth(1).click();
+  await page.locator('.difficulty:not([disabled])').first().click();
   await expect(page.getByTestId('debug')).toContainText('normal.osu');
 
   const downloadPromise = page.waitForEvent('download');
@@ -324,11 +339,11 @@ test('keeps controls responsive after repeated restarts and beatmap rebuilds', a
   await expect(page.locator('#status')).toHaveText('ready');
   await page.locator('[data-mod="HD"]').click();
   await page.locator('[data-mod="DT"]').click();
-  await page.locator('.difficulty:not([disabled])').nth(1).click();
+  await page.locator('.difficulty:not([disabled])').first().click();
   await expect(page.getByTestId('debug')).toContainText('normal.osu');
   await page.locator('[data-mod="NC"]').click();
   await page.locator('[data-mod="HR"]').click();
-  await page.locator('.difficulty:not([disabled])').first().click();
+  await page.locator('.difficulty:not([disabled])').nth(1).click();
   await expect(page.getByTestId('debug')).toContainText('standard.osu');
 
   for (let index = 0; index < 3; index += 1) {

@@ -20,6 +20,7 @@ export type ObjectRenderState = {
   id: string;
   status: ObjectStatus;
   result?: HitResult;
+  judgedAtMs?: number;
 };
 
 export type GameplayState = {
@@ -155,6 +156,8 @@ export class RulesetStdGame {
     if (!this.beatmap) {
       return [];
     }
+
+    this.currentTimeMs = event.gameTimestampMs;
 
     if (event.playfieldPosition) {
       this.cursor = event.playfieldPosition;
@@ -344,6 +347,7 @@ export class RulesetStdGame {
 
     state.status = 'judged';
     state.result = result;
+    state.judgedAtMs = this.currentTimeMs;
     this.judgedObjectCount += 1;
     this.score = applyHitResult(this.score, result);
     this.advanceFirstPendingIndex();

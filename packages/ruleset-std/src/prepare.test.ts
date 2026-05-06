@@ -155,6 +155,7 @@ SliderTickRate: 1
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ result: 'great', offsetMs: 0 });
     expect(game.getState().score.counts.great).toBe(1);
+    expect(game.getState().objects[0]).toMatchObject({ status: 'judged', judgedAtMs: 1000 });
     expect(game.getJudgedObjectCount()).toBe(1);
   });
 
