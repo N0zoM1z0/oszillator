@@ -90,26 +90,20 @@ export const objectVisualColour = (
 };
 
 export type SliderVisualMetrics = {
-  isCompact: boolean;
-  compactProgress: number;
-  endpointScale: number;
   outerWidth: number;
   innerWidth: number;
   highlightWidth: number;
+  endpointRadius: number;
 };
 
-export const sliderVisualMetrics = (trackLengthPx: number, radius: number): SliderVisualMetrics => {
-  const compactProgress = clamp(trackLengthPx / Math.max(1, radius * 2.65), 0, 1);
-  const isCompact = compactProgress < 1;
-  const outerWidth = isCompact ? Math.max(7, radius * (0.62 + compactProgress * 0.58)) : Math.max(10, radius * 1.55);
+export const sliderVisualMetrics = (radius: number): SliderVisualMetrics => {
+  const outerWidth = Math.max(10, radius * 1.88);
 
   return {
-    isCompact,
-    compactProgress,
-    endpointScale: isCompact ? 0.42 + compactProgress * 0.32 : 1,
     outerWidth,
-    innerWidth: isCompact ? Math.max(4, outerWidth * 0.58) : Math.max(6, radius * 1.1),
-    highlightWidth: isCompact ? Math.max(2, outerWidth * 0.12) : Math.max(2, radius * 0.12)
+    innerWidth: Math.max(6, radius * 1.22),
+    highlightWidth: Math.max(2, radius * 0.12),
+    endpointRadius: outerWidth / 2
   };
 };
 
@@ -273,10 +267,7 @@ export class PixiPlayfieldRenderer {
     colour: Rgb
   ): void {
     const points = object.trackPoints;
-    const trackLengthPx = this.sliderTrackLengthPx(points, transform);
-    const visualMetrics = points.length > 1
-      ? sliderVisualMetrics(trackLengthPx, radius)
-      : sliderVisualMetrics(Number.POSITIVE_INFINITY, radius);
+    const visualMetrics = sliderVisualMetrics(radius);
 
     if (points.length > 1) {
       const deep = rgbToNumber(mixRgb(colour, [10, 16, 26], 0.72));
@@ -305,16 +296,16 @@ export class PixiPlayfieldRenderer {
         this.objects.circle(checkpointX, checkpointY, Math.max(3, radius * 0.16)).fill({ color: rgbToNumber(mixRgb(colour, [255, 255, 255], 0.62)), alpha: alpha * 0.75 });
       }
       if (checkpoint.kind === 'repeat') {
-        this.drawSliderEndpoint(checkpointX, checkpointY, radius * visualMetrics.endpointScale, alpha, colour);
-        this.drawRepeatMarker(checkpointX, checkpointY, radius * visualMetrics.endpointScale * 0.58, alpha);
+        this.drawSliderEndpoint(checkpointX, checkpointY, visualMetrics.endpointRadius, alpha, colour);
+        this.drawRepeatMarker(checkpointX, checkpointY, visualMetrics.endpointRadius * 0.62, alpha);
       }
     }
 
-    this.drawSliderEndpoint(tailX, tailY, radius * visualMetrics.endpointScale, alpha, colour);
+    this.drawSliderEndpoint(tailX, tailY, visualMetrics.endpointRadius, alpha, colour);
     this.drawHitCircle(
       transform.offsetX + object.position.x * transform.scale,
       transform.offsetY + object.position.y * transform.scale,
-      radius * 0.94,
+      visualMetrics.endpointRadius,
       alpha,
       approachRadius,
       colour
@@ -333,21 +324,10 @@ export class PixiPlayfieldRenderer {
     }
   }
 
-  private drawSliderEndpoint(positionX: number, positionY: number, radius: number, alpha: number, colour: Rgb): void {
-    const endpointRadius = radius * 0.94;
+  private drawSliderEndpoint(positionX: number, positionY: number, endpointRadius: number, alpha: number, colour: Rgb): void {
     this.objects.circle(positionX, positionY, endpointRadius).fill({ color: rgbToNumber(mixRgb(colour, [12, 18, 28], 0.62)), alpha: alpha * 0.76 });
-    this.objects.circle(positionX, positionY, endpointRadius).stroke({ color: 0xf8fafc, alpha: alpha * 0.95, width: Math.max(3, radius * 0.1) });
+    this.objects.circle(positionX, positionY, endpointRadius).stroke({ color: 0xf8fafc, alpha: alpha * 0.95, width: Math.max(3, endpointRadius * 0.12) });
     this.objects.circle(positionX, positionY, endpointRadius * 0.66).fill({ color: rgbToNumber(colour), alpha: alpha * 0.86 });
-  }
-
-  private sliderTrackLengthPx(points: readonly { x: number; y: number }[], transform: ReturnType<typeof computePlayfieldTransform>): number {
-    let length = 0;
-    for (let index = 1; index < points.length; index += 1) {
-      const previous = points[index - 1]!;
-      const current = points[index]!;
-      length += Math.hypot((current.x - previous.x) * transform.scale, (current.y - previous.y) * transform.scale);
-    }
-    return length;
   }
 
   private drawSpinner(

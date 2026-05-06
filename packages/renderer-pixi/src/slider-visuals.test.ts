@@ -3,19 +3,20 @@ import { describe, expect, it } from 'vitest';
 import { sliderVisualMetrics } from './renderer';
 
 describe('slider visual metrics', () => {
-  it('scales down short slider tails and tracks to avoid overlapping endpoint lobes', () => {
-    const metrics = sliderVisualMetrics(36, 40);
+  it('keeps slider endpoints aligned with the outer track diameter', () => {
+    const metrics = sliderVisualMetrics(40);
 
-    expect(metrics.isCompact).toBe(true);
-    expect(metrics.endpointScale).toBeLessThan(0.6);
-    expect(metrics.outerWidth).toBeLessThan(40);
+    expect(metrics.endpointRadius * 2).toBeCloseTo(metrics.outerWidth);
   });
 
-  it('keeps normal sliders at full endpoint scale', () => {
-    const metrics = sliderVisualMetrics(180, 40);
+  it('uses the same metrics for long and short sliders', () => {
+    expect(sliderVisualMetrics(24)).toEqual(sliderVisualMetrics(24));
+  });
 
-    expect(metrics.isCompact).toBe(false);
-    expect(metrics.endpointScale).toBe(1);
-    expect(metrics.outerWidth).toBeCloseTo(62);
+  it('keeps the inner colour band thinner than the endpoint diameter', () => {
+    const metrics = sliderVisualMetrics(40);
+
+    expect(metrics.innerWidth).toBeLessThan(metrics.outerWidth);
+    expect(metrics.highlightWidth).toBeLessThan(metrics.innerWidth);
   });
 });
