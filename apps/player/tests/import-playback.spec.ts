@@ -281,6 +281,20 @@ test('supports autoplay and gameplay mod toggles', async ({ page }) => {
   await expect(page.locator('[data-mod="DT"]')).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').mods).toEqual(['HD', 'HR', 'DT']);
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').playbackRate).toBe(1.5);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').preservePitch).toBe(true);
+
+  await page.locator('[data-mod="NC"]').click();
+  await expect(page.locator('[data-mod="DT"]')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-mod="NC"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').mods).toEqual(['HD', 'HR', 'NC']);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').playbackRate).toBe(1.5);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').preservePitch).toBe(false);
+
+  await page.locator('[data-mod="DT"]').click();
+  await expect(page.locator('[data-mod="DT"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-mod="NC"]')).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').mods).toEqual(['HD', 'HR', 'DT']);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').preservePitch).toBe(true);
 
   await page.locator('#autoplay-button').click();
   await expect(page.locator('#autoplay-button')).toHaveAttribute('aria-pressed', 'true');

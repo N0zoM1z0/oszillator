@@ -63,6 +63,7 @@ let loopEnabled = false;
 let lastDebugRenderMs = 0;
 let preparedEndTimeMs = 0;
 let mediaObjectUrls: string[] = [];
+let audioObjectUrl: string | null = null;
 let videoElement: HTMLVideoElement | null = null;
 let smokeActive = false;
 let lastSmokePuffMs = -Infinity;
@@ -284,6 +285,7 @@ const renderDebug = (force = false): void => {
       mods: selectedMods(),
       dynamicColours: dynamicColoursEnabled,
       playbackRate: audioEngine?.getPlaybackRate() ?? state.prepared?.timeRate ?? 1,
+      preservePitch: audioEngine?.getPreservePitch() ?? true,
       gameTimeMs: Math.round(audioEngine?.getGameTimeMs() ?? gameState.currentTimeMs),
       objects: state.prepared?.objects.length ?? 0,
       counts: gameState.score.counts,
@@ -533,6 +535,21 @@ const mimeTypeForPath = (path: string): string => {
   if (extension === 'bmp') {
     return 'image/bmp';
   }
+  if (extension === 'mp3') {
+    return 'audio/mpeg';
+  }
+  if (extension === 'wav') {
+    return 'audio/wav';
+  }
+  if (extension === 'ogg') {
+    return 'audio/ogg';
+  }
+  if (extension === 'flac') {
+    return 'audio/flac';
+  }
+  if (extension === 'm4a') {
+    return 'audio/mp4';
+  }
   if (extension === 'webm') {
     return 'video/webm';
   }
@@ -593,10 +610,18 @@ const setupAudio = async (): Promise<void> => {
     audioEngine = new WebAudioEngine();
     const audioCopy = new Uint8Array(audioBytes.byteLength);
     audioCopy.set(audioBytes);
-    const buffer = await audioEngine.load(audioCopy.buffer);
-    audioEngine.setBuffer(buffer);
+    audioObjectUrl = URL.createObjectURL(new Blob([audioCopy], { type: mimeTypeForPath(state.selected.audioPath) }));
+    const audioElement = new Audio(audioObjectUrl);
+    audioElement.preload = 'auto';
+    await waitForMediaReady(audioElement);
+    audioEngine.setMediaElement(audioElement);
     audioEngine.setPlaybackRate(state.prepared?.timeRate ?? 1);
+    audioEngine.setPreservePitch(!activeMods.has('NC'));
   } catch (error) {
+    if (audioObjectUrl) {
+      URL.revokeObjectURL(audioObjectUrl);
+      audioObjectUrl = null;
+    }
     state.errors.push(`Audio unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
@@ -609,7 +634,33 @@ const teardownAudio = async (): Promise<void> => {
   const oldEngine = audioEngine;
   audioEngine = null;
   await oldEngine.destroy();
+  if (audioObjectUrl) {
+    URL.revokeObjectURL(audioObjectUrl);
+    audioObjectUrl = null;
+  }
 };
+
+const waitForMediaReady = (media: HTMLMediaElement): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const cleanup = (): void => {
+      media.removeEventListener('canplay', handleReady);
+      media.removeEventListener('loadedmetadata', handleReady);
+      media.removeEventListener('error', handleError);
+    };
+    const handleReady = (): void => {
+      cleanup();
+      resolve();
+    };
+    const handleError = (): void => {
+      cleanup();
+      reject(new Error(media.error?.message || 'Media element failed to load audio'));
+    };
+
+    media.addEventListener('canplay', handleReady, { once: true });
+    media.addEventListener('loadedmetadata', handleReady, { once: true });
+    media.addEventListener('error', handleError, { once: true });
+    media.load();
+  });
 
 const mountRenderer = async (): Promise<void> => {
   if (!state.prepared) {
