@@ -123,6 +123,11 @@ h2 {
   background: rgba(231, 201, 111, 0.14);
 }
 
+.toolbar button.active {
+  border-color: #58a666;
+  background: rgba(88, 166, 102, 0.2);
+}
+
 .difficulty:disabled,
 .toolbar button:disabled {
   opacity: 0.46;

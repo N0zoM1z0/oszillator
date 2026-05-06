@@ -35,6 +35,7 @@ let game = new RulesetStdGame();
 let inputManager: InputManager | null = null;
 let rafId = 0;
 let scoreSavedForDifficulty: string | null = null;
+let loopEnabled = false;
 
 root.innerHTML = `
   <main class="shell">
@@ -60,6 +61,7 @@ root.innerHTML = `
           <button id="play-button" type="button" disabled>Play</button>
           <button id="pause-button" type="button" disabled>Pause</button>
           <button id="seek-button" type="button" disabled>Restart</button>
+          <button id="loop-button" type="button" aria-pressed="false">Loop</button>
           <button id="export-button" type="button">Export report</button>
         </div>
       </section>
@@ -89,6 +91,7 @@ const stageElement = document.querySelector<HTMLDivElement>('#stage')!;
 const playButton = document.querySelector<HTMLButtonElement>('#play-button')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause-button')!;
 const seekButton = document.querySelector<HTMLButtonElement>('#seek-button')!;
+const loopButton = document.querySelector<HTMLButtonElement>('#loop-button')!;
 const exportButton = document.querySelector<HTMLButtonElement>('#export-button')!;
 
 const renderSidebar = (): void => {
@@ -282,6 +285,14 @@ const tick = (): void => {
     if (scheduledJudgements.some((judgement) => judgement.result !== 'miss')) {
       audioEngine?.playHitsound('normal');
     }
+    if (loopEnabled && state.prepared.objects.length > 0) {
+      const lastObjectEnd = Math.max(...state.prepared.objects.map((object) => object.endTimeMs));
+      if (time > lastObjectEnd + 1000) {
+        audioEngine?.seek(0);
+        game.start(state.prepared);
+        scoreSavedForDifficulty = null;
+      }
+    }
     void persistScoreIfComplete();
     renderer.renderFrame({
       beatmap: state.prepared,
@@ -367,6 +378,12 @@ seekButton.addEventListener('click', () => {
     game.start(state.prepared);
     scoreSavedForDifficulty = null;
   }
+});
+
+loopButton.addEventListener('click', () => {
+  loopEnabled = !loopEnabled;
+  loopButton.setAttribute('aria-pressed', String(loopEnabled));
+  loopButton.classList.toggle('active', loopEnabled);
 });
 
 exportButton.addEventListener('click', () => {
