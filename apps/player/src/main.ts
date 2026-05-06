@@ -15,7 +15,7 @@ import { openOszillatorDb, saveBeatmapSet, saveLocalScore } from '@oszillator/st
 import { getSliderPositionAtDistance } from '@oszillator/slider-geometry';
 
 import { InputManager } from './input/input-manager';
-import { createShowcaseManifest, isShowcaseBeatmap } from './showcase';
+import { isShowcaseBeatmap, loadShowcaseManifest } from './showcase';
 import './styles.css';
 
 type AppState = {
@@ -75,10 +75,11 @@ let selectionQueue: Promise<void> = Promise.resolve();
 let selectionRequestId = 0;
 let lastCursorTrailMs = -Infinity;
 let dynamicColoursEnabled = false;
-let showcasePlaybackState: 'idle' | 'playing' | 'paused' | 'finished' = 'idle';
-let showcasePlaybackStartMs = 0;
-let showcasePlaybackStartGameMs = 0;
-let showcasePausedAtMs = 0;
+let userImportStarted = false;
+let showcasePreviewActive = false;
+let showcasePreviewStartMs = 0;
+let showcasePreviewStartGameMs = 0;
+let showcasePreviewPausedAtMs = 0;
 
 const hitHistory: HitHistoryEntry[] = [];
 const smokePuffs: SmokePuff[] = [];
@@ -226,68 +227,41 @@ window.__oszillatorDebug = {
   getGameTimeMs: () => Math.round(currentGameTimeMs())
 };
 
+const showcasePreviewTimeMs = (): number => {
+  if (!showcasePreviewActive) {
+    return showcasePreviewPausedAtMs;
+  }
+
+  return showcasePreviewStartGameMs + performance.now() - showcasePreviewStartMs;
+};
+
+const startShowcasePreview = (timeMs = showcasePreviewPausedAtMs): void => {
+  showcasePreviewActive = true;
+  showcasePreviewStartMs = performance.now();
+  showcasePreviewStartGameMs = Math.max(timeMs, 0);
+  showcasePreviewPausedAtMs = showcasePreviewStartGameMs;
+};
+
+const stopShowcasePreview = (timeMs = showcasePreviewTimeMs()): void => {
+  showcasePreviewActive = false;
+  showcasePreviewPausedAtMs = Math.max(timeMs, 0);
+  showcasePreviewStartGameMs = showcasePreviewPausedAtMs;
+  showcasePreviewStartMs = performance.now();
+};
+
+const resetShowcasePreview = (): void => {
+  showcasePreviewActive = false;
+  showcasePreviewStartMs = 0;
+  showcasePreviewStartGameMs = 0;
+  showcasePreviewPausedAtMs = 0;
+};
+
 const currentGameTimeMs = (): number => {
-  if (isShowcaseBeatmap(state.selected)) {
-    return showcaseGameTimeMs();
+  if (isShowcaseBeatmap(state.selected) && showcasePreviewActive && audioEngine?.getState() !== 'playing') {
+    return showcasePreviewTimeMs();
   }
 
   return audioEngine?.getGameTimeMs() ?? game.getCurrentTimeMs();
-};
-
-const currentPlaybackState = (): string => {
-  if (isShowcaseBeatmap(state.selected)) {
-    return showcasePlaybackState;
-  }
-
-  return audioEngine?.getState() ?? 'idle';
-};
-
-const showcaseGameTimeMs = (): number => {
-  if (showcasePlaybackState === 'playing') {
-    return showcasePlaybackStartGameMs + performance.now() - showcasePlaybackStartMs;
-  }
-
-  return showcasePausedAtMs;
-};
-
-const playShowcase = (startTimeMs = showcasePausedAtMs): void => {
-  showcasePlaybackStartMs = performance.now();
-  showcasePlaybackStartGameMs = Math.max(startTimeMs, 0);
-  showcasePausedAtMs = showcasePlaybackStartGameMs;
-  showcasePlaybackState = 'playing';
-};
-
-const pauseShowcase = (): void => {
-  if (showcasePlaybackState !== 'playing') {
-    return;
-  }
-
-  showcasePausedAtMs = showcaseGameTimeMs();
-  showcasePlaybackState = 'paused';
-};
-
-const seekShowcase = (timeMs: number): void => {
-  const nextTimeMs = Math.max(timeMs, 0);
-  showcasePausedAtMs = nextTimeMs;
-  showcasePlaybackStartGameMs = nextTimeMs;
-  showcasePlaybackStartMs = performance.now();
-  if (showcasePlaybackState === 'finished') {
-    showcasePlaybackState = 'paused';
-  }
-};
-
-const finishShowcase = (timeMs: number): void => {
-  showcasePausedAtMs = timeMs;
-  showcasePlaybackStartGameMs = timeMs;
-  showcasePlaybackStartMs = performance.now();
-  showcasePlaybackState = 'finished';
-};
-
-const resetShowcasePlayback = (): void => {
-  showcasePlaybackState = 'idle';
-  showcasePlaybackStartMs = 0;
-  showcasePlaybackStartGameMs = 0;
-  showcasePausedAtMs = 0;
 };
 
 const renderSidebar = (): void => {
@@ -349,7 +323,7 @@ const renderDebug = (force = false): void => {
       selected: state.selected?.normalizedPath ?? null,
       background: state.selected?.backgroundPath ?? null,
       video: state.selected?.videoPath ?? null,
-      audio: currentPlaybackState(),
+      audio: audioEngine?.getState() ?? 'idle',
       autoplay: autoplayEnabled,
       mods: selectedMods(),
       dynamicColours: dynamicColoursEnabled,
@@ -423,12 +397,13 @@ const recordJudgements = (judgements: readonly JudgementEvent[]): void => {
 const selectedMods = (): GameplayMod[] => [...activeMods];
 
 const importFile = async (file: File): Promise<void> => {
+  userImportStarted = true;
   state.importStatus = 'reading';
   state.errors = [];
   autoplayEnabled = false;
   dynamicColoursEnabled = false;
   activeMods.clear();
-  resetShowcasePlayback();
+  resetShowcasePreview();
   renderSidebar();
 
   const worker = new Worker(new URL('./workers/import-worker.ts', import.meta.url), { type: 'module' });
@@ -495,6 +470,9 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: nu
   teardownRenderer();
   state.selected = beatmap;
   state.prepared = beatmap ? prepareBeatmap(beatmap.parsed, { mods: selectedMods() }) : null;
+  if (!isShowcaseBeatmap(beatmap)) {
+    resetShowcasePreview();
+  }
   scoreSavedForDifficulty = null;
   preparedEndTimeMs = state.prepared?.objects.reduce((endTime, object) => Math.max(endTime, object.endTimeMs), 0) ?? 0;
   game = new RulesetStdGame();
@@ -502,9 +480,6 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: nu
 
   if (state.prepared) {
     game.start(state.prepared);
-  }
-  if (isShowcaseBeatmap(beatmap)) {
-    seekShowcase(0);
   }
 
   setupStageMedia(beatmap);
@@ -535,24 +510,11 @@ const resetVisualState = (): void => {
 };
 
 const setupStageMedia = (beatmap: BeatmapManifestEntry | null): void => {
-  stageMediaElement.innerHTML = '';
-  if (isShowcaseBeatmap(beatmap)) {
-    const backgroundElement = document.createElement('div');
-    backgroundElement.className = 'showcase-background';
-    backgroundElement.innerHTML = `
-      <span class="showcase-orb one"></span>
-      <span class="showcase-orb two"></span>
-      <span class="showcase-orb three"></span>
-      <span class="showcase-grid"></span>
-    `;
-    stageMediaElement.append(backgroundElement);
-    return;
-  }
-
   if (!beatmap || !state.manifest) {
     return;
   }
 
+  stageMediaElement.innerHTML = '';
   if (beatmap.backgroundPath) {
     const backgroundUrl = createObjectUrlForArchiveEntry(beatmap.backgroundPath);
     if (backgroundUrl) {
@@ -803,16 +765,20 @@ const tick = (): void => {
       if (time > preparedEndTimeMs + 1000) {
         audioEngine?.seek(0);
         if (isShowcaseBeatmap(state.selected)) {
-          seekShowcase(0);
-          playShowcase(0);
+          startShowcasePreview(0);
         }
         game.start(state.prepared);
         scoreSavedForDifficulty = null;
         resetVisualState();
       }
     }
-    if (isShowcaseBeatmap(state.selected) && showcasePlaybackState === 'playing' && time > preparedEndTimeMs + 1000) {
-      finishShowcase(preparedEndTimeMs + 1000);
+    if (
+      isShowcaseBeatmap(state.selected) &&
+      showcasePreviewActive &&
+      audioEngine?.getState() !== 'playing' &&
+      time > preparedEndTimeMs + 1000
+    ) {
+      stopShowcasePreview(preparedEndTimeMs + 1000);
     }
     void persistScoreIfComplete();
     const gameState = game.getState();
@@ -1200,7 +1166,10 @@ const escapeHtml = (value: string): string =>
   value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 
 const bootShowcase = async (): Promise<void> => {
-  const manifest = createShowcaseManifest();
+  const manifest = await loadShowcaseManifest();
+  if (userImportStarted) {
+    return;
+  }
   const beatmap = manifest.beatmaps[0] ?? null;
   state.manifest = manifest;
   state.importStatus = 'showcase';
@@ -1213,7 +1182,8 @@ const bootShowcase = async (): Promise<void> => {
   loopButton.setAttribute('aria-pressed', 'false');
   loopButton.classList.remove('active');
   await requestSelectBeatmap(beatmap);
-  playShowcase(0);
+  startShowcasePreview(0);
+  audioEngine?.play(0);
   renderSidebar();
   renderDebug(true);
 };
@@ -1242,15 +1212,6 @@ dropZone.addEventListener('drop', (event) => {
 });
 
 playButton.addEventListener('click', async () => {
-  if (isShowcaseBeatmap(state.selected)) {
-    if (showcasePlaybackState === 'playing') {
-      return;
-    }
-    playShowcase(showcasePlaybackState === 'finished' ? 0 : showcasePausedAtMs);
-    renderDebug(true);
-    return;
-  }
-
   const engine = audioEngine;
   if (!engine) {
     return;
@@ -1258,6 +1219,12 @@ playButton.addEventListener('click', async () => {
 
   await engine.unlock();
   const audioState = engine.getState();
+  if (isShowcaseBeatmap(state.selected) && showcasePreviewActive && audioState !== 'playing') {
+    const previewTimeMs = showcasePreviewTimeMs();
+    stopShowcasePreview(previewTimeMs);
+    engine.play(previewTimeMs);
+    return;
+  }
   if (audioState === 'playing') {
     return;
   }
@@ -1270,19 +1237,13 @@ playButton.addEventListener('click', async () => {
 });
 
 pauseButton.addEventListener('click', () => {
-  if (isShowcaseBeatmap(state.selected)) {
-    pauseShowcase();
-    renderDebug(true);
-    return;
-  }
-
+  stopShowcasePreview();
   audioEngine?.pause();
 });
 seekButton.addEventListener('click', () => {
+  audioEngine?.seek(0);
   if (isShowcaseBeatmap(state.selected)) {
-    seekShowcase(0);
-  } else {
-    audioEngine?.seek(0);
+    startShowcasePreview(0);
   }
   if (state.prepared) {
     game.start(state.prepared);
@@ -1380,4 +1341,9 @@ window.addEventListener('resize', () => inputManager?.updateSize());
 
 renderSidebar();
 renderDebug(true);
-void bootShowcase();
+void bootShowcase().catch((error: unknown) => {
+  state.importStatus = 'error';
+  state.errors.push(`Showcase failed: ${error instanceof Error ? error.message : String(error)}`);
+  renderSidebar();
+  renderDebug(true);
+});

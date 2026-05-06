@@ -46,6 +46,8 @@ export class WebAudioEngine {
 
   private readonly handleMediaEnded = (): void => {
     if (this.state === 'playing') {
+      this.pausedAtMs = (this.mediaElement?.currentTime ?? 0) * 1000;
+      this.playbackStartBeatmapMs = this.pausedAtMs;
       this.state = 'stopped';
     }
   };
@@ -124,6 +126,8 @@ export class WebAudioEngine {
     source.start(0, Math.max(startTimeMs, 0) / 1000);
     source.onended = () => {
       if (this.state === 'playing') {
+        this.pausedAtMs = (this.buffer?.duration ?? 0) * 1000;
+        this.playbackStartBeatmapMs = this.pausedAtMs;
         this.state = 'stopped';
       }
     };
