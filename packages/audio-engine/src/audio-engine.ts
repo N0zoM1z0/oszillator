@@ -1,4 +1,5 @@
 import { mapAudioContextTimeToGameTimeMs } from './audio-clock';
+import { HitsoundPlayer, type HitsoundKind } from './hitsound-player';
 import { DEFAULT_AUDIO_OFFSET_SETTINGS, type AudioOffsetSettings } from './offset';
 
 export type AudioEngineState = 'idle' | 'ready' | 'playing' | 'paused' | 'stopped';
@@ -12,6 +13,8 @@ export class WebAudioEngine {
   private readonly context: AudioContext;
 
   private readonly offsets: AudioOffsetSettings;
+
+  private readonly hitsounds: HitsoundPlayer;
 
   private buffer: AudioBuffer | null = null;
 
@@ -33,6 +36,7 @@ export class WebAudioEngine {
 
     this.context = options.audioContext ?? new AudioContextCtor();
     this.offsets = options.offsets ?? DEFAULT_AUDIO_OFFSET_SETTINGS;
+    this.hitsounds = new HitsoundPlayer(this.context);
   }
 
   async unlock(): Promise<void> {
@@ -127,6 +131,10 @@ export class WebAudioEngine {
 
   getState(): AudioEngineState {
     return this.state;
+  }
+
+  playHitsound(kind: HitsoundKind = 'normal'): void {
+    this.hitsounds.play(kind);
   }
 
   private stopSource(): void {

@@ -2,7 +2,7 @@ import { WebAudioEngine } from '@oszillator/audio-engine';
 import { RulesetStdGame, prepareBeatmap, type PreparedBeatmap } from '@oszillator/ruleset-std';
 import { PixiPlayfieldRenderer } from '@oszillator/renderer-pixi';
 import type { OszArchiveManifest, BeatmapManifestEntry } from '@oszillator/osz-loader';
-import { openOszillatorDb, saveLocalScore } from '@oszillator/storage';
+import { openOszillatorDb, saveBeatmapSet, saveLocalScore } from '@oszillator/storage';
 
 import { InputManager } from './input/input-manager';
 import './styles.css';
@@ -161,6 +161,7 @@ const importFile = async (file: File): Promise<void> => {
     if (event.data.type === 'manifest') {
       state.manifest = event.data.manifest as OszArchiveManifest;
       state.importStatus = 'ready';
+      void persistImportedLibrary(state.manifest);
       selectBeatmap(state.manifest.beatmaps.find((beatmap) => beatmap.supported) ?? null);
       worker.terminate();
       return;
@@ -192,6 +193,37 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null): Promise<void
   await setupAudio();
   renderSidebar();
   renderDebug();
+};
+
+const persistImportedLibrary = async (manifest: OszArchiveManifest): Promise<void> => {
+  const firstBeatmap = manifest.beatmaps[0];
+  if (!firstBeatmap) {
+    return;
+  }
+
+  try {
+    const database = await openOszillatorDb();
+    await saveBeatmapSet(
+      database,
+      {
+        id: manifest.archiveId,
+        title: firstBeatmap.parsed.metadata.title,
+        artist: firstBeatmap.parsed.metadata.artist,
+        creator: firstBeatmap.parsed.metadata.creator,
+        importedAt: Date.now()
+      },
+      manifest.beatmaps.map((beatmap) => ({
+        id: beatmap.normalizedPath,
+        setId: manifest.archiveId,
+        version: beatmap.parsed.metadata.version,
+        objectCount: beatmap.parsed.hitObjects.length,
+        audioPath: beatmap.audioPath,
+        backgroundPath: beatmap.backgroundPath
+      }))
+    );
+  } catch (error) {
+    state.errors.push(`Library persistence failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 };
 
 const setupAudio = async (): Promise<void> => {
@@ -231,7 +263,10 @@ const mountRenderer = async (): Promise<void> => {
     target: stageElement,
     getGameTimeMs: () => audioEngine?.getGameTimeMs() ?? 0,
     onInput: (event) => {
-      game.handleInput(event);
+      const judgements = game.handleInput(event);
+      if (judgements.some((judgement) => judgement.result !== 'miss')) {
+        audioEngine?.playHitsound('normal');
+      }
       renderDebug();
     }
   });
@@ -243,7 +278,10 @@ const mountRenderer = async (): Promise<void> => {
 const tick = (): void => {
   if (state.prepared && renderer) {
     const time = audioEngine?.getGameTimeMs() ?? game.getState().currentTimeMs;
-    game.updateTo(time);
+    const scheduledJudgements = game.updateTo(time);
+    if (scheduledJudgements.some((judgement) => judgement.result !== 'miss')) {
+      audioEngine?.playHitsound('normal');
+    }
     void persistScoreIfComplete();
     renderer.renderFrame({
       beatmap: state.prepared,
