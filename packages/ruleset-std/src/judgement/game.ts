@@ -7,6 +7,7 @@ type ObjectStatus = 'pending' | 'judged';
 
 type SliderProgressState = {
   headHit: boolean;
+  headOffsetMs: number;
   passedCheckpoints: Set<number>;
 };
 
@@ -32,6 +33,7 @@ export type JudgementEvent = {
   objectId: string;
   result: HitResult;
   timeMs: number;
+  offsetMs?: number;
 };
 
 const resultFromOffset = (offsetMs: number, windows: PreparedBeatmap['difficulty']): HitResult => {
@@ -229,7 +231,7 @@ export class RulesetStdGame {
           continue;
         }
 
-        events.push(this.finalizeObject(object.id, resultFromOffset(offset, this.beatmap.difficulty)));
+        events.push(this.finalizeObject(object.id, resultFromOffset(offset, this.beatmap.difficulty), offset));
         break;
       }
 
@@ -240,6 +242,7 @@ export class RulesetStdGame {
 
         this.sliderProgress.set(object.id, {
           headHit: resultFromOffset(offset, this.beatmap.difficulty) !== 'miss',
+          headOffsetMs: offset,
           passedCheckpoints: new Set()
         });
         break;
@@ -279,7 +282,7 @@ export class RulesetStdGame {
     if (gameTimeMs >= slider.endTimeMs) {
       const totalParts = slider.checkpoints.length + 1;
       const successfulParts = (progress.headHit ? 1 : 0) + progress.passedCheckpoints.size;
-      return [this.finalizeObject(slider.id, sliderResultFromRatio(successfulParts / totalParts))];
+      return [this.finalizeObject(slider.id, sliderResultFromRatio(successfulParts / totalParts), progress.headOffsetMs)];
     }
 
     return [];
@@ -330,13 +333,13 @@ export class RulesetStdGame {
     }
   }
 
-  private finalizeObject(objectId: string, result: HitResult): JudgementEvent {
+  private finalizeObject(objectId: string, result: HitResult, offsetMs?: number): JudgementEvent {
     const state = this.objectStates.get(objectId);
     if (!state) {
-      return { objectId, result, timeMs: this.currentTimeMs };
+      return this.createJudgementEvent(objectId, result, offsetMs);
     }
     if (state.status === 'judged') {
-      return { objectId, result: state.result ?? result, timeMs: this.currentTimeMs };
+      return this.createJudgementEvent(objectId, state.result ?? result, offsetMs);
     }
 
     state.status = 'judged';
@@ -345,10 +348,15 @@ export class RulesetStdGame {
     this.score = applyHitResult(this.score, result);
     this.advanceFirstPendingIndex();
 
+    return this.createJudgementEvent(objectId, result, offsetMs);
+  }
+
+  private createJudgementEvent(objectId: string, result: HitResult, offsetMs?: number): JudgementEvent {
     return {
       objectId,
       result,
-      timeMs: this.currentTimeMs
+      timeMs: this.currentTimeMs,
+      ...(offsetMs === undefined ? {} : { offsetMs })
     };
   }
 

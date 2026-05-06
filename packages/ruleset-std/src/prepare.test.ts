@@ -78,7 +78,7 @@ describe('prepareBeatmap', () => {
     });
 
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ result: 'great' });
+    expect(events[0]).toMatchObject({ result: 'great', offsetMs: 0 });
     expect(game.getState().score.counts.great).toBe(1);
     expect(game.getJudgedObjectCount()).toBe(1);
   });

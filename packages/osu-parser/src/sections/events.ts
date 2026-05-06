@@ -8,6 +8,8 @@ export type BreakPeriod = {
 
 export type EventsSection = {
   backgroundFilename: string | null;
+  videoFilename: string | null;
+  videoOffsetMs: number;
   breaks: BreakPeriod[];
 };
 
@@ -16,6 +18,8 @@ const stripQuotes = (value: string): string => value.replace(/^"(.*)"$/, '$1');
 export const parseEventsSection = (lines: readonly SectionLine[], warnings: ParseWarning[]): EventsSection => {
   const events: EventsSection = {
     backgroundFilename: null,
+    videoFilename: null,
+    videoOffsetMs: 0,
     breaks: []
   };
 
@@ -47,7 +51,20 @@ export const parseEventsSection = (lines: readonly SectionLine[], warnings: Pars
       continue;
     }
 
-    if (eventType === 'Video' || eventType === '1' || eventType === 'Storyboard') {
+    if (eventType === 'Video' || eventType === '1') {
+      const offset = parseInteger(parts[1] ?? '');
+      const filename = parts[2];
+      if (offset === null || !filename) {
+        warnings.push(createParseWarning('events.invalid-video', `Invalid video line: ${line.text}`, line.lineNumber));
+        continue;
+      }
+
+      events.videoOffsetMs = offset;
+      events.videoFilename = stripQuotes(filename);
+      continue;
+    }
+
+    if (eventType === 'Storyboard') {
       warnings.push(
         createParseWarning('events.unsupported', `Ignoring unsupported event line: ${line.text}`, line.lineNumber)
       );

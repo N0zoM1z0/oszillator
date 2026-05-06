@@ -17,6 +17,7 @@ Version: Normal
 OverallDifficulty: 5
 [Events]
 0,0,"bg.png",0,0
+Video,500,"video.mp4"
 [TimingPoints]
 0,500,4,2,0,60,1,0
 [HitObjects]
@@ -28,7 +29,8 @@ describe('osz manifest', () => {
     const archive = zipSync({
       'song/test.osu': strToU8(osuText),
       'song/audio.wav': new Uint8Array([1, 2, 3]),
-      'song/bg.png': new Uint8Array([4, 5, 6])
+      'song/bg.png': new Uint8Array([4, 5, 6]),
+      'song/video.mp4': new Uint8Array([7, 8, 9])
     });
 
     const entries = unzipOszArchive(archive);
@@ -37,7 +39,9 @@ describe('osz manifest', () => {
     expect(manifest.beatmaps).toHaveLength(1);
     expect(manifest.beatmaps[0]?.audioPath).toBe('song/audio.wav');
     expect(manifest.beatmaps[0]?.backgroundPath).toBe('song/bg.png');
+    expect(manifest.beatmaps[0]?.videoPath).toBe('song/video.mp4');
     expect(manifest.assets.audioCandidates).toEqual(['song/audio.wav']);
+    expect(manifest.assets.videoCandidates).toEqual(['song/video.mp4']);
   });
 
   it('resolves custom sample filenames relative to the beatmap file', () => {

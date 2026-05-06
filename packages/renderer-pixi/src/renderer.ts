@@ -12,11 +12,18 @@ export type RenderSettings = {
   backgroundDim: number;
 };
 
+export type SmokePuff = {
+  x: number;
+  y: number;
+  createdAtMs: number;
+};
+
 export type RenderFrameInput = {
   beatmap: PreparedBeatmap;
   gameTimeMs: number;
   gameplayState: GameplayState;
   settings: RenderSettings;
+  smokePuffs?: readonly SmokePuff[];
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
@@ -27,6 +34,8 @@ export class PixiPlayfieldRenderer {
   private readonly root = new Container();
 
   private readonly playfield = new Graphics();
+
+  private readonly smoke = new Graphics();
 
   private readonly objects = new Graphics();
 
@@ -53,7 +62,7 @@ export class PixiPlayfieldRenderer {
     this.height = settings.height;
     element.append(this.app.canvas);
     this.app.stage.addChild(this.root);
-    this.root.addChild(this.playfield, this.objects, this.cursor);
+    this.root.addChild(this.playfield, this.smoke, this.objects, this.cursor);
   }
 
   resize(settings: RenderSettings): void {
@@ -71,6 +80,9 @@ export class PixiPlayfieldRenderer {
     const transform = computePlayfieldTransform(input.settings);
 
     this.drawPlayfield(input.settings, transform);
+
+    this.smoke.clear();
+    this.drawSmoke(input.smokePuffs ?? [], input.gameTimeMs, transform);
 
     this.objects.clear();
     const visible = queryVisibleTimeRange(
@@ -152,8 +164,8 @@ export class PixiPlayfieldRenderer {
   ): void {
     const points = object.trackPoints;
     if (points.length > 1) {
-      this.drawSliderPath(points, transform, Math.max(10, radius * 1.85), 0x0f172a, alpha * 0.85);
-      this.drawSliderPath(points, transform, Math.max(6, radius * 1.35), 0x38bdf8, alpha * 0.55);
+      this.drawSliderPath(points, transform, Math.max(10, radius * 1.55), 0x0f172a, alpha * 0.88);
+      this.drawSliderPath(points, transform, Math.max(6, radius * 1.1), 0x38bdf8, alpha * 0.58);
       this.drawSliderPath(points, transform, Math.max(2, radius * 0.12), 0xe0f2fe, alpha * 0.7);
     }
 
@@ -175,16 +187,16 @@ export class PixiPlayfieldRenderer {
         this.objects.circle(checkpointX, checkpointY, Math.max(3, radius * 0.16)).fill({ color: 0xe0f2fe, alpha: alpha * 0.75 });
       }
       if (checkpoint.kind === 'repeat') {
-        this.drawHitCircle(checkpointX, checkpointY, radius * 0.88, alpha * 0.9, radius * 0.88);
+        this.drawSliderEndpoint(checkpointX, checkpointY, radius, alpha);
         this.drawRepeatMarker(checkpointX, checkpointY, radius * 0.58, alpha);
       }
     }
 
-    this.drawHitCircle(tailX, tailY, radius * 0.88, alpha * 0.9, radius * 0.88);
+    this.drawSliderEndpoint(tailX, tailY, radius, alpha);
     this.drawHitCircle(
       transform.offsetX + object.position.x * transform.scale,
       transform.offsetY + object.position.y * transform.scale,
-      radius,
+      radius * 0.94,
       alpha,
       approachRadius
     );
@@ -200,6 +212,13 @@ export class PixiPlayfieldRenderer {
       this.objects.circle(ballX, ballY, radius * 0.72).fill({ color: 0xfacc15, alpha: 0.92 });
       this.objects.circle(ballX, ballY, radius * 0.72).stroke({ color: 0xfffbeb, alpha: 0.95, width: Math.max(2, radius * 0.08) });
     }
+  }
+
+  private drawSliderEndpoint(positionX: number, positionY: number, radius: number, alpha: number): void {
+    const endpointRadius = radius * 0.94;
+    this.objects.circle(positionX, positionY, endpointRadius).fill({ color: 0x101827, alpha: alpha * 0.76 });
+    this.objects.circle(positionX, positionY, endpointRadius).stroke({ color: 0xf8fafc, alpha: alpha * 0.95, width: Math.max(3, radius * 0.1) });
+    this.objects.circle(positionX, positionY, endpointRadius * 0.66).fill({ color: 0x38bdf8, alpha: alpha * 0.86 });
   }
 
   private drawSliderPath(
@@ -228,6 +247,26 @@ export class PixiPlayfieldRenderer {
       .lineTo(positionX + size * 0.35, positionY)
       .lineTo(positionX - size * 0.35, positionY + size * 0.55)
       .stroke({ color: 0xfffbeb, alpha, width: Math.max(2, size * 0.16) });
+  }
+
+  private drawSmoke(
+    puffs: readonly SmokePuff[],
+    gameTimeMs: number,
+    transform: ReturnType<typeof computePlayfieldTransform>
+  ): void {
+    for (const puff of puffs) {
+      const age = gameTimeMs - puff.createdAtMs;
+      if (age < 0 || age > 900) {
+        continue;
+      }
+
+      const life = 1 - age / 900;
+      const radius = (10 + age * 0.018) * transform.scale;
+      const x = transform.offsetX + puff.x * transform.scale;
+      const y = transform.offsetY + puff.y * transform.scale;
+      this.smoke.circle(x, y, radius).fill({ color: 0xe5e7eb, alpha: life * 0.12 });
+      this.smoke.circle(x, y, radius * 0.55).fill({ color: 0xf8fafc, alpha: life * 0.08 });
+    }
   }
 
   private drawPlayfield(settings: RenderSettings, transform: ReturnType<typeof computePlayfieldTransform>): void {

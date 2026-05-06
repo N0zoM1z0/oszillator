@@ -15,6 +15,7 @@ export type InputManagerOptions = {
   getScreenRect: () => ScreenRect;
   getGameTimeMs: () => number;
   onInput: (event: GameplayInputEvent) => void;
+  onSmokeActive?: (active: boolean) => void;
 };
 
 const keyboardMap = new Map<string, GameplayButton>([
@@ -87,6 +88,14 @@ export class InputManager {
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    if (event.code === 'KeyC') {
+      if (!event.repeat) {
+        event.preventDefault();
+        this.options.onSmokeActive?.(true);
+      }
+      return;
+    }
+
     const key = keyboardMap.get(event.code);
     if (event.repeat) {
       return;
@@ -98,6 +107,12 @@ export class InputManager {
   };
 
   private readonly handleKeyUp = (event: KeyboardEvent): void => {
+    if (event.code === 'KeyC') {
+      event.preventDefault();
+      this.options.onSmokeActive?.(false);
+      return;
+    }
+
     const key = keyboardMap.get(event.code);
     if (key) {
       event.preventDefault();

@@ -57,11 +57,13 @@ describe('parseOsu', () => {
     expect(parsed.metadata.title).toBe('Test Song');
     expect(parsed.difficulty.approachRate).toBe(8);
     expect(parsed.events.backgroundFilename).toBe('bg.jpg');
+    expect(parsed.events.videoFilename).toBe('video.mp4');
+    expect(parsed.events.videoOffsetMs).toBe(0);
     expect(parsed.events.breaks).toEqual([{ startTime: 5000, endTime: 7000 }]);
     expect(parsed.timingPoints).toHaveLength(2);
     expect(parsed.hitObjects.map((item) => item.kind)).toEqual(['circle', 'slider', 'spinner']);
     expect(parsed.warnings.some((warning) => warning.code === 'difficulty.approach-rate-fallback')).toBe(true);
-    expect(parsed.warnings.some((warning) => warning.code === 'events.unsupported')).toBe(true);
+    expect(parsed.warnings.some((warning) => warning.code === 'events.unsupported')).toBe(false);
   });
 
   it('handles BOM and CRLF inputs', () => {

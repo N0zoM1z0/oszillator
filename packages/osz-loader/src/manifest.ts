@@ -20,6 +20,7 @@ export type BeatmapManifestEntry = {
   parsed: ParsedOsuFile;
   audioPath: string | null;
   backgroundPath: string | null;
+  videoPath: string | null;
   customSamplePaths: string[];
   supported: boolean;
 };
@@ -27,6 +28,7 @@ export type BeatmapManifestEntry = {
 export type AssetManifest = {
   audioCandidates: string[];
   imageCandidates: string[];
+  videoCandidates: string[];
   hitsoundCandidates: string[];
 };
 
@@ -40,6 +42,7 @@ export type OszArchiveManifest = {
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.ogg', '.wav', '.m4a']);
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.ogv', '.mov', '.avi']);
 const HITSOUND_EXTENSIONS = new Set(['.wav', '.ogg', '.mp3']);
 
 const fileExtension = (value: string): string => {
@@ -63,6 +66,9 @@ export const buildOszArchiveManifest = (entries: readonly ArchiveEntry[]): OszAr
   const imageCandidates = files
     .filter((entry) => IMAGE_EXTENSIONS.has(entry.extension))
     .map((entry) => entry.normalizedPath);
+  const videoCandidates = files
+    .filter((entry) => VIDEO_EXTENSIONS.has(entry.extension))
+    .map((entry) => entry.normalizedPath);
   const hitsoundCandidates = files
     .filter((entry) => HITSOUND_EXTENSIONS.has(entry.extension))
     .map((entry) => entry.normalizedPath);
@@ -82,6 +88,7 @@ export const buildOszArchiveManifest = (entries: readonly ArchiveEntry[]): OszAr
         normalizedPath: entry.normalizedPath,
         audioPath: resolveArchivePath(normalizedPaths, parsed.general.audioFilename, entry.normalizedPath),
         backgroundPath: resolveArchivePath(normalizedPaths, parsed.events.backgroundFilename, entry.normalizedPath),
+        videoPath: resolveArchivePath(normalizedPaths, parsed.events.videoFilename, entry.normalizedPath),
         customSamplePaths: [...new Set(customSamplePaths)],
         supported: parsed.general.mode === 0,
         parsed
@@ -95,6 +102,7 @@ export const buildOszArchiveManifest = (entries: readonly ArchiveEntry[]): OszAr
     assets: {
       audioCandidates,
       imageCandidates,
+      videoCandidates,
       hitsoundCandidates
     },
     entryBytes
