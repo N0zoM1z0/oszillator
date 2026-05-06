@@ -1,7 +1,7 @@
 {
   "name": "oszillator",
   "short_name": "oszillator",
-  "start_url": "/",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#10130f",
   "theme_color": "#e7c96f",

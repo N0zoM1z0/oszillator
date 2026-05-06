@@ -1,7 +1,8 @@
 /* global self, caches, URL, fetch */
 
 const CACHE_NAME = 'oszillator-shell-v1';
-const SHELL_ASSETS = ['/', '/manifest.webmanifest'];
+const BASE_PATH = new URL('./', self.location.href).pathname;
+const SHELL_ASSETS = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)));
@@ -20,7 +21,7 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     fetch(event.request).catch(() =>
-      caches.match(event.request).then((cached) => cached ?? caches.match('/'))
+      caches.match(event.request).then((cached) => cached ?? caches.match(BASE_PATH))
     )
   );
 });

@@ -1150,7 +1150,7 @@ exportButton.addEventListener('click', () => {
 });
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((error: unknown) => {
     state.errors.push(`PWA registration failed: ${error instanceof Error ? error.message : String(error)}`);
     renderDebug(true);
   });
