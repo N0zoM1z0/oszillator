@@ -24,7 +24,7 @@ export type ObjectRenderState = {
 export type GameplayState = {
   currentTimeMs: number;
   score: ScoreState;
-  objects: ObjectRenderState[];
+  objects: readonly ObjectRenderState[];
   cursor: Vec2;
 };
 
@@ -83,6 +83,12 @@ export class RulesetStdGame {
 
   private objectStates = new Map<string, ObjectRenderState>();
 
+  private objectRenderStates: ObjectRenderState[] = [];
+
+  private firstPendingIndex = 0;
+
+  private judgedObjectCount = 0;
+
   private sliderProgress = new Map<string, SliderProgressState>();
 
   private spinnerProgress = new Map<string, SpinnerProgressState>();
@@ -95,7 +101,10 @@ export class RulesetStdGame {
     this.beatmap = beatmap;
     this.currentTimeMs = 0;
     this.score = createScoreState();
-    this.objectStates = new Map(beatmap.objects.map((object) => [object.id, { id: object.id, status: 'pending' }]));
+    this.objectRenderStates = beatmap.objects.map((object) => ({ id: object.id, status: 'pending' }));
+    this.objectStates = new Map(this.objectRenderStates.map((state) => [state.id, state]));
+    this.firstPendingIndex = 0;
+    this.judgedObjectCount = 0;
     this.sliderProgress.clear();
     this.spinnerProgress.clear();
     this.cursor = PLAYFIELD_CENTER;
@@ -109,8 +118,14 @@ export class RulesetStdGame {
 
     this.currentTimeMs = gameTimeMs;
     const events: JudgementEvent[] = [];
+    const latestStartTimeNeedingUpdate = gameTimeMs + this.beatmap.difficulty.hitWindow50Ms;
 
-    for (const object of this.beatmap.objects) {
+    for (let index = this.firstPendingIndex; index < this.beatmap.objects.length; index += 1) {
+      const object = this.beatmap.objects[index]!;
+      if (object.startTimeMs > latestStartTimeNeedingUpdate) {
+        break;
+      }
+
       const state = this.objectStates.get(object.id);
       if (!state || state.status === 'judged') {
         continue;
@@ -164,9 +179,17 @@ export class RulesetStdGame {
     return {
       currentTimeMs: this.currentTimeMs,
       score: this.score,
-      objects: [...this.objectStates.values()],
+      objects: this.objectRenderStates,
       cursor: this.cursor
     };
+  }
+
+  getCurrentTimeMs(): number {
+    return this.currentTimeMs;
+  }
+
+  getJudgedObjectCount(): number {
+    return this.judgedObjectCount;
   }
 
   private handlePress(event: GameplayInputEvent): JudgementEvent[] {
@@ -176,7 +199,8 @@ export class RulesetStdGame {
 
     const events: JudgementEvent[] = [];
 
-    for (const object of this.beatmap.objects) {
+    for (let index = this.firstPendingIndex; index < this.beatmap.objects.length; index += 1) {
+      const object = this.beatmap.objects[index]!;
       const state = this.objectStates.get(object.id);
       if (!state || state.status === 'judged') {
         continue;
@@ -240,15 +264,16 @@ export class RulesetStdGame {
     }
 
     if (this.activeButtons.size > 0) {
-      slider.checkpoints.forEach((checkpoint, index) => {
+      for (let index = 0; index < slider.checkpoints.length; index += 1) {
+        const checkpoint = slider.checkpoints[index]!;
         if (checkpoint.time > gameTimeMs || progress.passedCheckpoints.has(index)) {
-          return;
+          continue;
         }
 
         if (distanceVec2(this.cursor, checkpoint.position) <= slider.followRadius) {
           progress.passedCheckpoints.add(index);
         }
-      });
+      }
     }
 
     if (gameTimeMs >= slider.endTimeMs) {
@@ -273,7 +298,12 @@ export class RulesetStdGame {
       return;
     }
 
-    for (const object of this.beatmap.objects) {
+    for (let index = this.firstPendingIndex; index < this.beatmap.objects.length; index += 1) {
+      const object = this.beatmap.objects[index]!;
+      if (object.startTimeMs > this.currentTimeMs) {
+        break;
+      }
+
       if (object.kind !== 'spinner') {
         continue;
       }
@@ -305,15 +335,35 @@ export class RulesetStdGame {
     if (!state) {
       return { objectId, result, timeMs: this.currentTimeMs };
     }
+    if (state.status === 'judged') {
+      return { objectId, result: state.result ?? result, timeMs: this.currentTimeMs };
+    }
 
     state.status = 'judged';
     state.result = result;
+    this.judgedObjectCount += 1;
     this.score = applyHitResult(this.score, result);
+    this.advanceFirstPendingIndex();
 
     return {
       objectId,
       result,
       timeMs: this.currentTimeMs
     };
+  }
+
+  private advanceFirstPendingIndex(): void {
+    if (!this.beatmap) {
+      return;
+    }
+
+    while (this.firstPendingIndex < this.beatmap.objects.length) {
+      const object = this.beatmap.objects[this.firstPendingIndex]!;
+      const state = this.objectStates.get(object.id);
+      if (!state || state.status !== 'judged') {
+        break;
+      }
+      this.firstPendingIndex += 1;
+    }
   }
 }

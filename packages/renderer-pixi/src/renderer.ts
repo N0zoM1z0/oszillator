@@ -1,6 +1,6 @@
 import { Application, Container, Graphics } from 'pixi.js';
 
-import { computePlayfieldTransform, queryVisibleTimeRange, type Vec2 } from '@oszillator/core';
+import { computePlayfieldTransform, queryVisibleTimeRange } from '@oszillator/core';
 import type { GameplayState, PreparedBeatmap, PreparedObject } from '@oszillator/ruleset-std';
 
 export type RenderSettings = {
@@ -31,6 +31,12 @@ export class PixiPlayfieldRenderer {
 
   private height = 0;
 
+  private lastPlayfieldWidth = 0;
+
+  private lastPlayfieldHeight = 0;
+
+  private lastBackgroundDim = Number.NaN;
+
   async mount(element: HTMLElement, settings: RenderSettings): Promise<void> {
     await this.app.init({
       width: settings.width,
@@ -59,11 +65,7 @@ export class PixiPlayfieldRenderer {
     this.resize(input.settings);
     const transform = computePlayfieldTransform(input.settings);
 
-    this.playfield.clear();
-    this.playfield
-      .rect(transform.offsetX, transform.offsetY, transform.width, transform.height)
-      .fill({ color: 0x111827, alpha: Math.max(0.1, 1 - input.settings.backgroundDim) })
-      .stroke({ color: 0x64748b, alpha: 0.5, width: 1 });
+    this.drawPlayfield(input.settings, transform);
 
     this.objects.clear();
     const visible = queryVisibleTimeRange(
@@ -80,8 +82,13 @@ export class PixiPlayfieldRenderer {
     }
 
     this.cursor.clear();
-    const cursor = this.toScreen(input.gameplayState.cursor, transform);
-    this.cursor.circle(cursor.x, cursor.y, 6).fill({ color: 0xf8fafc, alpha: 0.9 });
+    this.cursor
+      .circle(
+        transform.offsetX + input.gameplayState.cursor.x * transform.scale,
+        transform.offsetY + input.gameplayState.cursor.y * transform.scale,
+        6
+      )
+      .fill({ color: 0xf8fafc, alpha: 0.9 });
   }
 
   destroy(): void {
@@ -90,35 +97,48 @@ export class PixiPlayfieldRenderer {
 
   private drawObject(object: PreparedObject, gameTimeMs: number, transform: ReturnType<typeof computePlayfieldTransform>): void {
     const alpha = Math.max(0.15, Math.min(1, 1 - Math.abs(gameTimeMs - object.startTimeMs) / 1800));
-    const position = this.toScreen(object.position, transform);
+    const positionX = transform.offsetX + object.position.x * transform.scale;
+    const positionY = transform.offsetY + object.position.y * transform.scale;
     const radius = object.radius * transform.scale;
 
     if (object.kind === 'slider') {
       const points = object.path.sampledPoints;
       if (points.length > 1) {
-        const first = this.toScreen(points[0]!, transform);
-        this.objects.moveTo(first.x, first.y);
+        const first = points[0]!;
+        this.objects.moveTo(transform.offsetX + first.x * transform.scale, transform.offsetY + first.y * transform.scale);
         for (let index = 1; index < points.length; index += 1) {
-          const point = this.toScreen(points[index]!, transform);
-          this.objects.lineTo(point.x, point.y);
+          const point = points[index]!;
+          this.objects.lineTo(transform.offsetX + point.x * transform.scale, transform.offsetY + point.y * transform.scale);
         }
         this.objects.stroke({ color: 0x38bdf8, alpha: 0.55, width: Math.max(4, radius * 0.25) });
       }
     }
 
     if (object.kind === 'spinner') {
-      this.objects.circle(position.x, position.y, radius * 2.6).stroke({ color: 0xfacc15, alpha, width: 4 });
+      this.objects.circle(positionX, positionY, radius * 2.6).stroke({ color: 0xfacc15, alpha, width: 4 });
       return;
     }
 
-    this.objects.circle(position.x, position.y, radius).fill({ color: 0xe2e8f0, alpha });
-    this.objects.circle(position.x, position.y, radius * 1.75).stroke({ color: 0x67e8f9, alpha: alpha * 0.8, width: 2 });
+    this.objects.circle(positionX, positionY, radius).fill({ color: 0xe2e8f0, alpha });
+    this.objects.circle(positionX, positionY, radius * 1.75).stroke({ color: 0x67e8f9, alpha: alpha * 0.8, width: 2 });
   }
 
-  private toScreen(position: Vec2, transform: ReturnType<typeof computePlayfieldTransform>): Vec2 {
-    return {
-      x: transform.offsetX + position.x * transform.scale,
-      y: transform.offsetY + position.y * transform.scale
-    };
+  private drawPlayfield(settings: RenderSettings, transform: ReturnType<typeof computePlayfieldTransform>): void {
+    if (
+      this.lastPlayfieldWidth === settings.width &&
+      this.lastPlayfieldHeight === settings.height &&
+      this.lastBackgroundDim === settings.backgroundDim
+    ) {
+      return;
+    }
+
+    this.lastPlayfieldWidth = settings.width;
+    this.lastPlayfieldHeight = settings.height;
+    this.lastBackgroundDim = settings.backgroundDim;
+    this.playfield.clear();
+    this.playfield
+      .rect(transform.offsetX, transform.offsetY, transform.width, transform.height)
+      .fill({ color: 0x111827, alpha: Math.max(0.1, 1 - settings.backgroundDim) })
+      .stroke({ color: 0x64748b, alpha: 0.5, width: 1 });
   }
 }

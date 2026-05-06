@@ -80,5 +80,19 @@ describe('prepareBeatmap', () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ result: 'great' });
     expect(game.getState().score.counts.great).toBe(1);
+    expect(game.getJudgedObjectCount()).toBe(1);
+  });
+
+  it('keeps gameplay state object references stable for render loops', () => {
+    const beatmap = prepareBeatmap(parseOsu(osuText));
+    const game = new RulesetStdGame();
+    game.start(beatmap);
+
+    const initialObjects = game.getState().objects;
+    game.updateTo(500);
+    game.updateTo(750);
+
+    expect(game.getCurrentTimeMs()).toBe(750);
+    expect(game.getState().objects).toBe(initialObjects);
   });
 });

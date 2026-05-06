@@ -37,6 +37,7 @@ let rafId = 0;
 let scoreSavedForDifficulty: string | null = null;
 let loopEnabled = false;
 let lastDebugRenderMs = 0;
+let preparedEndTimeMs = 0;
 
 root.innerHTML = `
   <main class="shell">
@@ -184,7 +185,7 @@ const importFile = async (file: File): Promise<void> => {
       state.importStatus = 'error';
       state.errors.push(String(event.data.error));
       renderSidebar();
-      renderDebug();
+      renderDebug(true);
       worker.terminate();
     }
   };
@@ -193,9 +194,11 @@ const importFile = async (file: File): Promise<void> => {
 };
 
 const selectBeatmap = async (beatmap: BeatmapManifestEntry | null): Promise<void> => {
+  await teardownAudio();
   state.selected = beatmap;
   state.prepared = beatmap ? prepareBeatmap(beatmap.parsed) : null;
   scoreSavedForDifficulty = null;
+  preparedEndTimeMs = state.prepared?.objects.reduce((endTime, object) => Math.max(endTime, object.endTimeMs), 0) ?? 0;
   game = new RulesetStdGame();
 
   if (state.prepared) {
@@ -240,6 +243,8 @@ const persistImportedLibrary = async (manifest: OszArchiveManifest): Promise<voi
 };
 
 const setupAudio = async (): Promise<void> => {
+  await teardownAudio();
+
   if (!state.manifest || !state.selected?.audioPath) {
     return;
   }
@@ -261,15 +266,28 @@ const setupAudio = async (): Promise<void> => {
   }
 };
 
+const teardownAudio = async (): Promise<void> => {
+  if (!audioEngine) {
+    return;
+  }
+
+  const oldEngine = audioEngine;
+  audioEngine = null;
+  await oldEngine.destroy();
+};
+
 const mountRenderer = async (): Promise<void> => {
   if (!state.prepared) {
     return;
   }
 
+  cancelAnimationFrame(rafId);
   renderer?.destroy();
+  renderer = null;
   stageElement.innerHTML = '';
-  renderer = new PixiPlayfieldRenderer();
-  await renderer.mount(stageElement, stageSize());
+  const nextRenderer = new PixiPlayfieldRenderer();
+  await nextRenderer.mount(stageElement, stageSize());
+  renderer = nextRenderer;
 
   inputManager?.destroy();
   inputManager = new InputManager({
@@ -284,20 +302,18 @@ const mountRenderer = async (): Promise<void> => {
     }
   });
 
-  cancelAnimationFrame(rafId);
   tick();
 };
 
 const tick = (): void => {
   if (state.prepared && renderer) {
-    const time = audioEngine?.getGameTimeMs() ?? game.getState().currentTimeMs;
+    const time = audioEngine?.getGameTimeMs() ?? game.getCurrentTimeMs();
     const scheduledJudgements = game.updateTo(time);
     if (scheduledJudgements.some((judgement) => judgement.result !== 'miss')) {
       audioEngine?.playHitsound('normal');
     }
     if (loopEnabled && state.prepared.objects.length > 0) {
-      const lastObjectEnd = Math.max(...state.prepared.objects.map((object) => object.endTimeMs));
-      if (time > lastObjectEnd + 1000) {
+      if (time > preparedEndTimeMs + 1000) {
         audioEngine?.seek(0);
         game.start(state.prepared);
         scoreSavedForDifficulty = null;
@@ -322,14 +338,14 @@ const persistScoreIfComplete = async (): Promise<void> => {
     return;
   }
 
-  const gameState = game.getState();
-  const judgedCount = gameState.objects.filter((object) => object.status === 'judged').length;
+  const judgedCount = game.getJudgedObjectCount();
   if (judgedCount !== state.prepared.objects.length || judgedCount === 0) {
     return;
   }
 
   try {
     const database = await openOszillatorDb();
+    const gameState = game.getState();
     await saveLocalScore(database, {
       id: crypto.randomUUID(),
       difficultyId: state.selected.normalizedPath,
@@ -378,8 +394,22 @@ dropZone.addEventListener('drop', (event) => {
 });
 
 playButton.addEventListener('click', async () => {
-  await audioEngine?.unlock();
-  audioEngine?.play(0);
+  const engine = audioEngine;
+  if (!engine) {
+    return;
+  }
+
+  await engine.unlock();
+  const audioState = engine.getState();
+  if (audioState === 'playing') {
+    return;
+  }
+  if (audioState === 'paused') {
+    engine.resume();
+    return;
+  }
+
+  engine.play(audioState === 'stopped' ? 0 : engine.getGameTimeMs());
 });
 
 pauseButton.addEventListener('click', () => audioEngine?.pause());
@@ -410,11 +440,11 @@ exportButton.addEventListener('click', () => {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
     state.errors.push(`PWA registration failed: ${error instanceof Error ? error.message : String(error)}`);
-    renderDebug();
+    renderDebug(true);
   });
 }
 
 window.addEventListener('resize', () => inputManager?.updateSize());
 
 renderSidebar();
-renderDebug();
+renderDebug(true);

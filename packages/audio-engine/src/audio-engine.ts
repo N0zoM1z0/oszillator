@@ -16,6 +16,8 @@ export class WebAudioEngine {
 
   private readonly hitsounds: HitsoundPlayer;
 
+  private readonly ownsContext: boolean;
+
   private buffer: AudioBuffer | null = null;
 
   private source: AudioBufferSourceNode | null = null;
@@ -37,6 +39,7 @@ export class WebAudioEngine {
     this.context = options.audioContext ?? new AudioContextCtor();
     this.offsets = options.offsets ?? DEFAULT_AUDIO_OFFSET_SETTINGS;
     this.hitsounds = new HitsoundPlayer(this.context);
+    this.ownsContext = !options.audioContext;
   }
 
   async unlock(): Promise<void> {
@@ -112,6 +115,16 @@ export class WebAudioEngine {
     this.pausedAtMs = 0;
     this.playbackStartBeatmapMs = 0;
     this.state = this.buffer ? 'ready' : 'stopped';
+  }
+
+  async destroy(): Promise<void> {
+    this.stopSource();
+    this.buffer = null;
+    this.state = 'stopped';
+
+    if (this.ownsContext && this.context.state !== 'closed') {
+      await this.context.close();
+    }
   }
 
   getGameTimeMs(): number {

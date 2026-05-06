@@ -33,6 +33,7 @@ export class InputManager {
     options.target.addEventListener('pointermove', this.handlePointerMove);
     options.target.addEventListener('pointerdown', this.handlePointerDown);
     options.target.addEventListener('pointerup', this.handlePointerUp);
+    options.target.addEventListener('contextmenu', this.handleContextMenu);
   }
 
   updateSize(): void {
@@ -48,6 +49,7 @@ export class InputManager {
     this.options.target.removeEventListener('pointermove', this.handlePointerMove);
     this.options.target.removeEventListener('pointerdown', this.handlePointerDown);
     this.options.target.removeEventListener('pointerup', this.handlePointerUp);
+    this.options.target.removeEventListener('contextmenu', this.handleContextMenu);
   }
 
   private readonly emit = (event: Omit<GameplayInputEvent, 'id' | 'browserTimestampMs' | 'gameTimestampMs'>): void => {
@@ -70,7 +72,11 @@ export class InputManager {
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     const key = keyboardMap.get(event.code);
+    if (event.repeat) {
+      return;
+    }
     if (key) {
+      event.preventDefault();
       this.emit({ kind: 'press', source: 'keyboard', key });
     }
   };
@@ -78,6 +84,7 @@ export class InputManager {
   private readonly handleKeyUp = (event: KeyboardEvent): void => {
     const key = keyboardMap.get(event.code);
     if (key) {
+      event.preventDefault();
       this.emit({ kind: 'release', source: 'keyboard', key });
     }
   };
@@ -87,10 +94,20 @@ export class InputManager {
   };
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
+    event.preventDefault();
+    this.options.target.setPointerCapture(event.pointerId);
     this.emit({ kind: 'press', source: 'pointer', key: event.button === 2 ? 'M2' : 'M1', ...this.pointerPosition(event) });
   };
 
   private readonly handlePointerUp = (event: PointerEvent): void => {
+    event.preventDefault();
+    if (this.options.target.hasPointerCapture(event.pointerId)) {
+      this.options.target.releasePointerCapture(event.pointerId);
+    }
     this.emit({ kind: 'release', source: 'pointer', key: event.button === 2 ? 'M2' : 'M1', ...this.pointerPosition(event) });
+  };
+
+  private readonly handleContextMenu = (event: MouseEvent): void => {
+    event.preventDefault();
   };
 }
