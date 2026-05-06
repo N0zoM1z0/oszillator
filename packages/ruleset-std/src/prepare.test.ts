@@ -95,4 +95,37 @@ describe('prepareBeatmap', () => {
     expect(game.getCurrentTimeMs()).toBe(750);
     expect(game.getState().objects).toBe(initialObjects);
   });
+
+  it('precomputes slider tracks to stop at pixel length tails', () => {
+    const parsed = parseOsu(`osu file format v14
+[General]
+AudioFilename: sample.wav
+Mode: 0
+[Metadata]
+Title: Test Song
+Artist: Artist
+Creator: Mapper
+Version: Truncated
+[Difficulty]
+CircleSize: 4
+OverallDifficulty: 6
+ApproachRate: 7
+SliderMultiplier: 1.4
+SliderTickRate: 1
+[TimingPoints]
+0,500,4,2,0,60,1,0
+[HitObjects]
+0,0,1000,2,0,L|100:0|200:0,1,150
+`);
+    const beatmap = prepareBeatmap(parsed);
+    const slider = beatmap.objects[0];
+
+    expect(slider?.kind).toBe('slider');
+    if (slider?.kind !== 'slider') {
+      return;
+    }
+
+    expect(slider.trackPoints.at(-1)).toEqual({ x: 150, y: 0 });
+    expect(slider.checkpoints.at(-1)?.position).toEqual({ x: 150, y: 0 });
+  });
 });

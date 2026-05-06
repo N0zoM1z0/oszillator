@@ -150,7 +150,7 @@ export class PixiPlayfieldRenderer {
     radius: number,
     approachRadius: number
   ): void {
-    const points = object.path.sampledPoints;
+    const points = object.trackPoints;
     if (points.length > 1) {
       this.drawSliderPath(points, transform, Math.max(10, radius * 1.85), 0x0f172a, alpha * 0.85);
       this.drawSliderPath(points, transform, Math.max(6, radius * 1.35), 0x38bdf8, alpha * 0.55);

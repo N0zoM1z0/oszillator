@@ -87,3 +87,41 @@ export const getSliderPositionAtDistance = (path: SliderPath, distance: number):
 
 export const getSliderPositionAtProgress = (path: SliderPath, progress: number): Vec2 =>
   getSliderPositionAtDistance(path, path.totalLength * Math.min(Math.max(progress, 0), 1));
+
+export const getSliderPolylineUntilDistance = (path: SliderPath, distance: number): Vec2[] => {
+  const first = path.sampledPoints[0];
+  if (!first) {
+    return [];
+  }
+
+  if (distance <= 0 || path.sampledPoints.length === 1) {
+    return [first];
+  }
+
+  if (distance >= path.totalLength) {
+    return [...path.sampledPoints];
+  }
+
+  const points: Vec2[] = [first];
+  for (let index = 1; index < path.sampledPoints.length; index += 1) {
+    const previousDistance = path.cumulativeLengths[index - 1] as number;
+    const nextDistance = path.cumulativeLengths[index] as number;
+    const point = path.sampledPoints[index] as Vec2;
+
+    if (nextDistance < distance) {
+      points.push(point);
+      continue;
+    }
+
+    if (nextDistance === distance) {
+      points.push(point);
+    } else {
+      const previousPoint = path.sampledPoints[index - 1] as Vec2;
+      const span = nextDistance - previousDistance || 1;
+      points.push(lerpVec2(previousPoint, point, (distance - previousDistance) / span));
+    }
+    break;
+  }
+
+  return points;
+};

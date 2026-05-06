@@ -1,7 +1,7 @@
 import type { Vec2 } from '@oszillator/core';
 import { vec2 } from '@oszillator/core';
 import type { ParsedOsuFile, RawCircle, RawSlider, RawSpinner } from '@oszillator/osu-parser';
-import { buildSliderPath, getSliderPositionAtDistance, type SliderPath } from '@oszillator/slider-geometry';
+import { buildSliderPath, getSliderPolylineUntilDistance, getSliderPositionAtDistance, type SliderPath } from '@oszillator/slider-geometry';
 
 import { buildControlPoints, getActiveControlPoint, type ControlPoint } from './control-points';
 import { deriveDifficulty, type DerivedDifficulty } from './difficulty';
@@ -33,6 +33,7 @@ export type PreparedSlider = {
   repeatCount: number;
   pixelLength: number;
   path: SliderPath;
+  trackPoints: Vec2[];
   velocity: number;
   spanDurationMs: number;
   checkpoints: SliderCheckpoint[];
@@ -124,6 +125,7 @@ const prepareSlider = (
 ): PreparedSlider => {
   const path = buildSliderPath(raw.curveType, raw.controlPoints);
   const { spanDurationMs, checkpoints, velocity } = createSliderCheckpoints(raw, path, controlPoint, derivedDifficulty);
+  const trackPoints = getSliderPolylineUntilDistance(path, raw.pixelLength);
   return {
     id: toId('slider', raw.lineNumber),
     kind: 'slider',
@@ -135,6 +137,7 @@ const prepareSlider = (
     repeatCount: raw.repeatCount,
     pixelLength: raw.pixelLength,
     path,
+    trackPoints,
     velocity,
     spanDurationMs,
     checkpoints,

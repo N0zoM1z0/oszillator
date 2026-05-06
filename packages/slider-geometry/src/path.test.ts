@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { vec2 } from '@oszillator/core';
 
-import { buildSliderPath, getSliderPositionAtDistance, getSliderPositionAtProgress } from './path';
+import { buildSliderPath, getSliderPolylineUntilDistance, getSliderPositionAtDistance, getSliderPositionAtProgress } from './path';
 
 describe('buildSliderPath', () => {
   it('samples linear paths deterministically', () => {
@@ -10,6 +10,12 @@ describe('buildSliderPath', () => {
 
     expect(path.totalLength).toBeCloseTo(200);
     expect(getSliderPositionAtDistance(path, 50)).toEqual({ x: 50, y: 0 });
+  });
+
+  it('trims rendered polylines to the osu pixel length', () => {
+    const path = buildSliderPath('L', [vec2(0, 0), vec2(100, 0), vec2(200, 0)]);
+
+    expect(getSliderPolylineUntilDistance(path, 150)).toEqual([vec2(0, 0), vec2(100, 0), vec2(150, 0)]);
   });
 
   it('samples bezier paths', () => {
