@@ -100,6 +100,9 @@ importers:
       '@oszillator/core':
         specifier: workspace:*
         version: link:../core
+      '@oszillator/slider-geometry':
+        specifier: workspace:*
+        version: link:../slider-geometry
       pixi.js:
         specifier: ^8.11.0
         version: 8.18.1

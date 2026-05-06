@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@oszillator/core": "workspace:*",
+    "@oszillator/slider-geometry": "workspace:*",
     "pixi.js": "^8.11.0"
   }
 }
