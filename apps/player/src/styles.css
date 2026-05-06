@@ -125,6 +125,89 @@ h2 {
   display: none;
 }
 
+.starter-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(231, 201, 111, 0.32);
+  background:
+    linear-gradient(135deg, rgba(231, 201, 111, 0.18), rgba(88, 166, 102, 0.08)),
+    rgba(244, 240, 232, 0.05);
+  box-shadow: inset 0 1px 0 rgba(244, 240, 232, 0.08);
+}
+
+.starter-card .eyebrow {
+  color: #e7c96f;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.starter-card h2 {
+  margin: 0;
+  color: #f4f0e8;
+  font-size: 17px;
+  text-transform: none;
+}
+
+.starter-card p {
+  color: #c7d0bf;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.starter-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.starter-download,
+.starter-copy {
+  border: 1px solid rgba(244, 240, 232, 0.16);
+  padding: 10px 12px;
+  color: #f4f0e8;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.starter-download {
+  background: #e7c96f;
+  color: #151713;
+  font-weight: 800;
+  text-align: center;
+}
+
+.starter-copy {
+  background: rgba(244, 240, 232, 0.06);
+}
+
+.starter-download:hover,
+.starter-download:focus-visible {
+  background: #f4dc89;
+}
+
+.starter-copy:hover,
+.starter-copy:focus-visible {
+  border-color: #58a666;
+  background: rgba(88, 166, 102, 0.2);
+}
+
+.starter-password {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.starter-password code {
+  padding: 2px 7px;
+  border: 1px solid rgba(244, 240, 232, 0.16);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.24);
+  color: #f4dc89;
+}
+
 .difficulty-list,
 .toolbar,
 .mod-grid {

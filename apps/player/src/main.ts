@@ -112,6 +112,16 @@ root.innerHTML = `
         <input id="file-input" type="file" accept=".osz,.zip" />
         <span>Import local .osz</span>
       </label>
+      <section class="starter-card" data-testid="starter-card">
+        <p class="eyebrow">No beatmap yet?</p>
+        <h2>Try the showcase archive</h2>
+        <p>Download the showcase .osz, then import it here from your machine. Playback still stays local in your browser.</p>
+        <div class="starter-actions">
+          <a class="starter-download" href="https://n0zom1z0.lanzn.com/isZQ33ov1gij" target="_blank" rel="noreferrer">Download .osz</a>
+          <button id="copy-demo-password-button" class="starter-copy" type="button" data-password="1nnc">Copy password</button>
+        </div>
+        <p class="starter-password">Password <code>1nnc</code></p>
+      </section>
       <section>
         <h2>Difficulties</h2>
         <div id="difficulty-list" class="difficulty-list"></div>
@@ -202,6 +212,7 @@ const seekButton = document.querySelector<HTMLButtonElement>('#seek-button')!;
 const loopButton = document.querySelector<HTMLButtonElement>('#loop-button')!;
 const autoplayButton = document.querySelector<HTMLButtonElement>('#autoplay-button')!;
 const dynamicColoursButton = document.querySelector<HTMLButtonElement>('#dynamic-colours-button')!;
+const copyDemoPasswordButton = document.querySelector<HTMLButtonElement>('#copy-demo-password-button')!;
 const exportButton = document.querySelector<HTMLButtonElement>('#export-button')!;
 const modButtons = [...document.querySelectorAll<HTMLButtonElement>('.mod-toggle')];
 
@@ -1111,6 +1122,26 @@ dynamicColoursButton.addEventListener('click', () => {
   dynamicColoursEnabled = !dynamicColoursEnabled;
   renderSidebar();
   renderDebug(true);
+});
+
+copyDemoPasswordButton.addEventListener('click', () => {
+  const password = copyDemoPasswordButton.dataset.password ?? '1nnc';
+  const writePassword = navigator.clipboard?.writeText(password);
+  if (!writePassword) {
+    copyDemoPasswordButton.textContent = 'Password: 1nnc';
+    return;
+  }
+
+  writePassword
+    .then(() => {
+      copyDemoPasswordButton.textContent = 'Copied: 1nnc';
+      window.setTimeout(() => {
+        copyDemoPasswordButton.textContent = 'Copy password';
+      }, 1400);
+    })
+    .catch(() => {
+      copyDemoPasswordButton.textContent = 'Password: 1nnc';
+    });
 });
 
 for (const button of modButtons) {
