@@ -185,6 +185,19 @@ const spinnerOsz = (): Buffer =>
     ])
   );
 
+const waitingOsz = (): Buffer =>
+  Buffer.from(
+    createStoredZip([
+      { name: 'audio.wav', data: createSilentWav(12) },
+      {
+        name: 'waiting.osu',
+        data: textEncoder.encode(
+          osuDifficulty('Waiting', 0, ['256,192,1000,1,0,0:0:0:0:', '256,192,7000,1,0,0:0:0:0:'].join('\n'))
+        )
+      }
+    ])
+  );
+
 const moveMouseToPlayfield = async (page: Page, x: number, y: number): Promise<void> => {
   const canvasBox = await page.locator('canvas').boundingBox();
   expect(canvasBox).not.toBeNull();
@@ -392,4 +405,24 @@ test('renders spinner playback without browser errors', async ({ page }) => {
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('playing');
 
   expect(realErrors).toEqual([]);
+});
+
+test('shows a countdown overlay during long waits', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'synthetic-waiting.osz',
+    mimeType: 'application/zip',
+    buffer: waitingOsz()
+  });
+
+  await expect(page.locator('#status')).toHaveText('ready');
+  await page.locator('#autoplay-button').click();
+  await page.click('#play-button');
+  await page.waitForFunction(
+    () => ((window as Window & { __oszillatorDebug?: { getGameTimeMs: () => number } }).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 2400,
+    undefined,
+    { polling: 20 }
+  );
+  await expect(page.getByTestId('wait-overlay')).toHaveClass(/visible/);
+  await expect(page.locator('#wait-countdown')).toContainText('s');
 });

@@ -103,6 +103,7 @@ const AUTOPLAY_SPINNER_RADIUS = 120;
 const CURSOR_TRAIL_LIFETIME_MS = 260;
 const MAX_CURSOR_TRAIL = 28;
 const AUTOPLAY_AIM_MS = 520;
+const WAIT_OVERLAY_THRESHOLD_MS = 2500;
 
 root.innerHTML = `
   <main class="shell">
@@ -172,6 +173,13 @@ root.innerHTML = `
     <section class="stage-column">
       <div id="stage" class="stage" data-testid="stage">
         <div id="stage-media" class="stage-media" aria-hidden="true"></div>
+        <div id="wait-overlay" class="wait-overlay" data-testid="wait-overlay" aria-hidden="true">
+          <div class="wait-card">
+            <span class="wait-kicker">incoming pattern</span>
+            <strong id="wait-countdown">0.0s</strong>
+            <div class="wait-bar" aria-hidden="true"><i id="wait-progress"></i></div>
+          </div>
+        </div>
       </div>
       <div class="hud">
         <div><span>Import</span><strong id="status">idle</strong></div>
@@ -208,6 +216,9 @@ const accuracyElement = document.querySelector<HTMLElement>('#accuracy')!;
 const comboElement = document.querySelector<HTMLElement>('#combo')!;
 const stageElement = document.querySelector<HTMLDivElement>('#stage')!;
 const stageMediaElement = document.querySelector<HTMLDivElement>('#stage-media')!;
+const waitOverlayElement = document.querySelector<HTMLDivElement>('#wait-overlay')!;
+const waitCountdownElement = document.querySelector<HTMLElement>('#wait-countdown')!;
+const waitProgressElement = document.querySelector<HTMLElement>('#wait-progress')!;
 const count300Element = document.querySelector<HTMLElement>('#count-300')!;
 const count100Element = document.querySelector<HTMLElement>('#count-100')!;
 const count50Element = document.querySelector<HTMLElement>('#count-50')!;
@@ -384,6 +395,42 @@ const renderJudgementHud = (counts: Record<HitResult, number>): void => {
     .join('');
 };
 
+const renderWaitOverlay = (gameTimeMs: number): void => {
+  const beatmap = state.prepared;
+  if (!beatmap || beatmap.objects.length === 0) {
+    hideWaitOverlay();
+    return;
+  }
+
+  const nextIndex = beatmap.objects.findIndex((object) => object.startTimeMs > gameTimeMs);
+  const nextObject = nextIndex === -1 ? null : beatmap.objects[nextIndex]!;
+  if (!nextObject) {
+    hideWaitOverlay();
+    return;
+  }
+
+  const previousObject = nextIndex > 0 ? beatmap.objects[nextIndex - 1] : null;
+  const waitStartMs = previousObject ? Math.max(previousObject.endTimeMs, previousObject.startTimeMs) : 0;
+  const totalWaitMs = nextObject.startTimeMs - waitStartMs;
+  const remainingMs = nextObject.startTimeMs - gameTimeMs;
+  if (remainingMs <= 0 || totalWaitMs < WAIT_OVERLAY_THRESHOLD_MS || gameTimeMs < waitStartMs) {
+    hideWaitOverlay();
+    return;
+  }
+
+  const progress = clamp01((gameTimeMs - waitStartMs) / Math.max(1, totalWaitMs));
+  waitOverlayElement.classList.add('visible');
+  waitOverlayElement.setAttribute('aria-hidden', 'false');
+  waitCountdownElement.textContent = `${Math.max(0, remainingMs / 1000).toFixed(1)}s`;
+  waitProgressElement.style.transform = `scaleX(${progress.toFixed(4)})`;
+};
+
+const hideWaitOverlay = (): void => {
+  waitOverlayElement.classList.remove('visible');
+  waitOverlayElement.setAttribute('aria-hidden', 'true');
+  waitProgressElement.style.transform = 'scaleX(0)';
+};
+
 const labelForHitResult = (result: HitResult): string => {
   if (result === 'great') {
     return '300';
@@ -529,6 +576,7 @@ const resetVisualState = (): void => {
   hitHistory.length = 0;
   smokePuffs.length = 0;
   cursorTrail.length = 0;
+  hideWaitOverlay();
   smokeActive = false;
   lastSmokePuffMs = -Infinity;
   autoplayLastTimeMs = 0;
@@ -813,6 +861,7 @@ const tick = (): void => {
     void persistScoreIfComplete();
     const gameState = game.getState();
     const visualTimeMs = performance.now();
+    renderWaitOverlay(time);
     updateSmokePuffs(time, gameState.cursor);
     updateCursorTrail(visualTimeMs, gameState.cursor);
     renderer.renderFrame({
