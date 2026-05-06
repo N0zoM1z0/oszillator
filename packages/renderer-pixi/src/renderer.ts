@@ -107,6 +107,16 @@ export const sliderVisualMetrics = (radius: number): SliderVisualMetrics => {
   };
 };
 
+export const shouldMergeSliderEndpoints = (
+  head: { x: number; y: number },
+  tail: { x: number; y: number },
+  endpointRadius: number
+): boolean => {
+  const dx = head.x - tail.x;
+  const dy = head.y - tail.y;
+  return dx * dx + dy * dy <= (endpointRadius * 1.35) ** 2;
+};
+
 export class PixiPlayfieldRenderer {
   private readonly app = new Application();
 
@@ -176,9 +186,10 @@ export class PixiPlayfieldRenderer {
       (object) => object.startTimeMs
     );
     const activeStartIndex = includeActiveLongObjectStartIndex(input.beatmap.objects, visible.startIndex, input.gameTimeMs - 200);
-    for (let index = activeStartIndex; index < visible.endIndex; index += 1) {
+    for (let index = visible.endIndex - 1; index >= activeStartIndex; index -= 1) {
       const object = input.beatmap.objects[index];
-      if (object) {
+      const renderState = input.gameplayState.objects[index];
+      if (object && renderState?.status !== 'judged') {
         this.drawObject(
           object,
           input.gameTimeMs,
@@ -288,6 +299,13 @@ export class PixiPlayfieldRenderer {
     }
     const tailX = tail ? transform.offsetX + tail.position.x * transform.scale : transform.offsetX + object.position.x * transform.scale;
     const tailY = tail ? transform.offsetY + tail.position.y * transform.scale : transform.offsetY + object.position.y * transform.scale;
+    const headX = transform.offsetX + object.position.x * transform.scale;
+    const headY = transform.offsetY + object.position.y * transform.scale;
+    const endpointsMerged = shouldMergeSliderEndpoints(
+      { x: headX, y: headY },
+      { x: tailX, y: tailY },
+      visualMetrics.endpointRadius
+    );
 
     for (const checkpoint of object.checkpoints) {
       const checkpointX = transform.offsetX + checkpoint.position.x * transform.scale;
@@ -296,15 +314,19 @@ export class PixiPlayfieldRenderer {
         this.objects.circle(checkpointX, checkpointY, Math.max(3, radius * 0.16)).fill({ color: rgbToNumber(mixRgb(colour, [255, 255, 255], 0.62)), alpha: alpha * 0.75 });
       }
       if (checkpoint.kind === 'repeat') {
-        this.drawSliderEndpoint(checkpointX, checkpointY, visualMetrics.endpointRadius, alpha, colour);
+        if (!shouldMergeSliderEndpoints({ x: headX, y: headY }, { x: checkpointX, y: checkpointY }, visualMetrics.endpointRadius)) {
+          this.drawSliderEndpoint(checkpointX, checkpointY, visualMetrics.endpointRadius, alpha, colour);
+        }
         this.drawRepeatMarker(checkpointX, checkpointY, visualMetrics.endpointRadius * 0.62, alpha);
       }
     }
 
-    this.drawSliderEndpoint(tailX, tailY, visualMetrics.endpointRadius, alpha, colour);
+    if (!endpointsMerged) {
+      this.drawSliderEndpoint(tailX, tailY, visualMetrics.endpointRadius, alpha, colour);
+    }
     this.drawHitCircle(
-      transform.offsetX + object.position.x * transform.scale,
-      transform.offsetY + object.position.y * transform.scale,
+      headX,
+      headY,
       visualMetrics.endpointRadius,
       alpha,
       approachRadius,

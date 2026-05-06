@@ -11,5 +11,10 @@ test('boots the player shell', async ({ page }) => {
   await expect(page.locator('.starter-download')).toHaveAttribute('href', 'https://n0zom1z0.lanzn.com/isZQ33ov1gij');
   await expect(page.getByTestId('starter-card')).toContainText('1nnc');
   await expect(page.getByTestId('stage')).toBeVisible();
-  await expect(page.getByTestId('debug')).toContainText('"objects": 0');
+  await expect(page.locator('#status')).toHaveText('showcase');
+  await expect(page.locator('.difficulty.active')).toContainText('Endless Fear showcase');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').objects).toBe(206);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').mods).toEqual(['HD']);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').autoplay).toBe(true);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').dynamicColours).toBe(true);
 });

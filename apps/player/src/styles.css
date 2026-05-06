@@ -307,6 +307,75 @@ h2 {
   filter: saturate(0.9) brightness(0.58) blur(0.5px);
 }
 
+.showcase-background {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 54% 42%, rgba(231, 201, 111, 0.18), transparent 18%),
+    radial-gradient(circle at 30% 72%, rgba(88, 166, 102, 0.18), transparent 22%),
+    linear-gradient(135deg, rgba(11, 18, 28, 0.96), rgba(22, 25, 17, 0.9) 48%, rgba(8, 13, 22, 0.98));
+}
+
+.showcase-background::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    conic-gradient(from 120deg at 50% 50%, transparent, rgba(231, 201, 111, 0.18), transparent 24%, rgba(88, 166, 102, 0.2), transparent 48%),
+    repeating-linear-gradient(115deg, rgba(244, 240, 232, 0.05) 0 1px, transparent 1px 18px);
+  opacity: 0.48;
+  animation: showcase-drift 18s linear infinite;
+}
+
+.showcase-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(12px);
+  mix-blend-mode: screen;
+}
+
+.showcase-orb.one {
+  width: 34vw;
+  height: 34vw;
+  left: 8%;
+  top: 8%;
+  background: rgba(56, 189, 248, 0.2);
+}
+
+.showcase-orb.two {
+  width: 28vw;
+  height: 28vw;
+  right: 9%;
+  top: 18%;
+  background: rgba(231, 201, 111, 0.18);
+}
+
+.showcase-orb.three {
+  width: 30vw;
+  height: 30vw;
+  left: 42%;
+  bottom: -12%;
+  background: rgba(88, 166, 102, 0.18);
+}
+
+.showcase-grid {
+  position: absolute;
+  inset: 9%;
+  border: 1px solid rgba(244, 240, 232, 0.08);
+  background-image:
+    linear-gradient(rgba(244, 240, 232, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(244, 240, 232, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(circle at center, black, transparent 78%);
+}
+
+@keyframes showcase-drift {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .hud {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
