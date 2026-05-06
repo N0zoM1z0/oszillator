@@ -20,6 +20,7 @@ export type BeatmapManifestEntry = {
   parsed: ParsedOsuFile;
   audioPath: string | null;
   backgroundPath: string | null;
+  customSamplePaths: string[];
   supported: boolean;
 };
 
@@ -70,11 +71,18 @@ export const buildOszArchiveManifest = (entries: readonly ArchiveEntry[]): OszAr
     .filter((entry) => fileExtension(entry.normalizedPath) === '.osu')
     .map<BeatmapManifestEntry>((entry) => {
       const parsed = parseOsu(textDecoder.decode(entry.bytes));
+      const customSamplePaths = parsed.hitObjects
+        .map((object) => object.hitSample?.filename)
+        .filter((filename): filename is string => Boolean(filename))
+        .map((filename) => resolveArchivePath(normalizedPaths, filename, entry.normalizedPath))
+        .filter((path): path is string => Boolean(path));
+
       return {
         filePath: entry.path,
         normalizedPath: entry.normalizedPath,
         audioPath: resolveArchivePath(normalizedPaths, parsed.general.audioFilename, entry.normalizedPath),
         backgroundPath: resolveArchivePath(normalizedPaths, parsed.events.backgroundFilename, entry.normalizedPath),
+        customSamplePaths: [...new Set(customSamplePaths)],
         supported: parsed.general.mode === 0,
         parsed
       };

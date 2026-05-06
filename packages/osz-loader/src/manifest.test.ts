@@ -40,6 +40,16 @@ describe('osz manifest', () => {
     expect(manifest.assets.audioCandidates).toEqual(['song/audio.wav']);
   });
 
+  it('resolves custom sample filenames relative to the beatmap file', () => {
+    const archive = zipSync({
+      'song/test.osu': strToU8(osuText.replace('0:0:0:0:', '0:0:0:0:soft-hit.wav')),
+      'song/soft-hit.wav': new Uint8Array([1])
+    });
+
+    const manifest = buildOszArchiveManifest(unzipOszArchive(archive));
+    expect(manifest.beatmaps[0]?.customSamplePaths).toEqual(['song/soft-hit.wav']);
+  });
+
   it('handles unsupported modes without crashing', () => {
     const archive = zipSync({
       'map.osu': strToU8(osuText.replace('Mode: 0', 'Mode: 3'))

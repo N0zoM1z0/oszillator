@@ -134,6 +134,8 @@ const renderDebug = (): void => {
       audio: audioEngine?.getState() ?? 'idle',
       gameTimeMs: Math.round(audioEngine?.getGameTimeMs() ?? gameState.currentTimeMs),
       objects: state.prepared?.objects.length ?? 0,
+      counts: gameState.score.counts,
+      customSamples: state.selected?.customSamplePaths ?? [],
       warnings: [...(state.selected?.parsed.warnings ?? []), ...(state.prepared?.warnings ?? []), ...state.errors].slice(0, 12)
     },
     null,
