@@ -95,7 +95,8 @@ export type SliderVisualMetrics = {
   outerWidth: number;
   innerWidth: number;
   highlightWidth: number;
-  endpointRadius: number;
+  headRadius: number;
+  markerSize: number;
 };
 
 export const sliderVisualMetrics = (radius: number): SliderVisualMetrics => {
@@ -105,18 +106,9 @@ export const sliderVisualMetrics = (radius: number): SliderVisualMetrics => {
     outerWidth,
     innerWidth: Math.max(6, radius * 1.22),
     highlightWidth: Math.max(2, radius * 0.12),
-    endpointRadius: outerWidth / 2
+    headRadius: outerWidth / 2,
+    markerSize: outerWidth / 2
   };
-};
-
-export const shouldMergeSliderEndpoints = (
-  head: { x: number; y: number },
-  tail: { x: number; y: number },
-  endpointRadius: number
-): boolean => {
-  const dx = head.x - tail.x;
-  const dy = head.y - tail.y;
-  return dx * dx + dy * dy <= (endpointRadius * 1.35) ** 2;
 };
 
 export class PixiPlayfieldRenderer {
@@ -315,23 +307,8 @@ export class PixiPlayfieldRenderer {
       this.drawSliderPath(points, transform, visualMetrics.highlightWidth, soft, alpha * 0.76);
     }
 
-    let tail = object.checkpoints[object.checkpoints.length - 1];
-    for (let index = object.checkpoints.length - 1; index >= 0; index -= 1) {
-      const checkpoint = object.checkpoints[index]!;
-      if (checkpoint.kind === 'tail') {
-        tail = checkpoint;
-        break;
-      }
-    }
-    const tailX = tail ? transform.offsetX + tail.position.x * transform.scale : transform.offsetX + object.position.x * transform.scale;
-    const tailY = tail ? transform.offsetY + tail.position.y * transform.scale : transform.offsetY + object.position.y * transform.scale;
     const headX = transform.offsetX + object.position.x * transform.scale;
     const headY = transform.offsetY + object.position.y * transform.scale;
-    const endpointsMerged = shouldMergeSliderEndpoints(
-      { x: headX, y: headY },
-      { x: tailX, y: tailY },
-      visualMetrics.endpointRadius
-    );
 
     for (const checkpoint of object.checkpoints) {
       const checkpointX = transform.offsetX + checkpoint.position.x * transform.scale;
@@ -340,20 +317,15 @@ export class PixiPlayfieldRenderer {
         this.objects.circle(checkpointX, checkpointY, Math.max(3, radius * 0.16)).fill({ color: rgbToNumber(mixRgb(colour, [255, 255, 255], 0.62)), alpha: alpha * 0.75 });
       }
       if (checkpoint.kind === 'repeat') {
-        if (!shouldMergeSliderEndpoints({ x: headX, y: headY }, { x: checkpointX, y: checkpointY }, visualMetrics.endpointRadius)) {
-          this.drawSliderEndpoint(checkpointX, checkpointY, visualMetrics.endpointRadius, alpha, colour);
-        }
-        this.drawRepeatMarker(checkpointX, checkpointY, visualMetrics.endpointRadius * 0.62, alpha);
+        this.drawRepeatMarker(checkpointX, checkpointY, visualMetrics.markerSize * 0.62, alpha);
       }
     }
 
-    if (!endpointsMerged) {
-      this.drawSliderEndpoint(tailX, tailY, visualMetrics.endpointRadius, alpha, colour);
-    }
+    this.drawSliderTailMarker(object.trackPoints, transform, visualMetrics.markerSize, alpha);
     this.drawHitCircle(
       headX,
       headY,
-      visualMetrics.endpointRadius,
+      visualMetrics.headRadius,
       alpha,
       approachRadius,
       colour
@@ -370,12 +342,6 @@ export class PixiPlayfieldRenderer {
       this.objects.circle(ballX, ballY, radius * 0.72).fill({ color: rgbToNumber(mixRgb(colour, [255, 255, 255], 0.25)), alpha: 0.92 });
       this.objects.circle(ballX, ballY, radius * 0.72).stroke({ color: 0xfffbeb, alpha: 0.95, width: Math.max(2, radius * 0.08) });
     }
-  }
-
-  private drawSliderEndpoint(positionX: number, positionY: number, endpointRadius: number, alpha: number, colour: Rgb): void {
-    this.objects.circle(positionX, positionY, endpointRadius).fill({ color: rgbToNumber(mixRgb(colour, [12, 18, 28], 0.62)), alpha: alpha * 0.76 });
-    this.objects.circle(positionX, positionY, endpointRadius).stroke({ color: 0xf8fafc, alpha: alpha * 0.95, width: Math.max(3, endpointRadius * 0.12) });
-    this.objects.circle(positionX, positionY, endpointRadius * 0.66).fill({ color: rgbToNumber(colour), alpha: alpha * 0.86 });
   }
 
   private drawSpinner(
@@ -471,6 +437,44 @@ export class PixiPlayfieldRenderer {
       .lineTo(positionX + size * 0.35, positionY)
       .lineTo(positionX - size * 0.35, positionY + size * 0.55)
       .stroke({ color: 0xfffbeb, alpha, width: Math.max(2, size * 0.16) });
+  }
+
+  private drawSliderTailMarker(
+    points: readonly { x: number; y: number }[],
+    transform: ReturnType<typeof computePlayfieldTransform>,
+    size: number,
+    alpha: number
+  ): void {
+    const tail = points.at(-1);
+    const previous = points.length > 1 ? points.at(-2) : null;
+    if (!tail || !previous) {
+      return;
+    }
+
+    const tailX = transform.offsetX + tail.x * transform.scale;
+    const tailY = transform.offsetY + tail.y * transform.scale;
+    const previousX = transform.offsetX + previous.x * transform.scale;
+    const previousY = transform.offsetY + previous.y * transform.scale;
+    const dx = tailX - previousX;
+    const dy = tailY - previousY;
+    const length = Math.hypot(dx, dy);
+    if (length <= 0.001) {
+      return;
+    }
+
+    const tangentX = dx / length;
+    const tangentY = dy / length;
+    const normalX = -tangentY;
+    const normalY = tangentX;
+    const back = size * 0.18;
+    const forward = size * 0.18;
+    const spread = size * 0.58;
+
+    this.objects
+      .moveTo(tailX - tangentX * back + normalX * spread, tailY - tangentY * back + normalY * spread)
+      .lineTo(tailX + tangentX * forward, tailY + tangentY * forward)
+      .lineTo(tailX - tangentX * back - normalX * spread, tailY - tangentY * back - normalY * spread)
+      .stroke({ color: 0xfffbeb, alpha: alpha * 0.92, width: Math.max(2, size * 0.16), cap: 'round', join: 'round' });
   }
 
   private drawArc(

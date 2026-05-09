@@ -25,6 +25,13 @@ const SHOWCASES: readonly ShowcaseAssetSet[] = [
     audioPath: 'sola-imoutos-extra/audio.mp3',
     backgroundPath: 'sola-imoutos-extra/bg.jpg',
     videoPath: 'sola-imoutos-extra/video.mp4'
+  },
+  {
+    archiveId: 'bundled-everything-will-freeze-time-freeze',
+    osuPath: 'everything-will-freeze/time-freeze.osu',
+    audioPath: 'everything-will-freeze/audio.mp3',
+    backgroundPath: 'everything-will-freeze/bg.jpg',
+    videoPath: null
   }
 ];
 

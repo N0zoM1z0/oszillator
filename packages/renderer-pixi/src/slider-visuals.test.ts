@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { shouldMergeSliderEndpoints, sliderVisualMetrics } from './renderer';
+import { sliderVisualMetrics } from './renderer';
 
 describe('slider visual metrics', () => {
-  it('keeps slider endpoints aligned with the outer track diameter', () => {
+  it('keeps the slider head aligned with the outer track diameter', () => {
     const metrics = sliderVisualMetrics(40);
 
-    expect(metrics.endpointRadius * 2).toBeCloseTo(metrics.outerWidth);
+    expect(metrics.headRadius * 2).toBeCloseTo(metrics.outerWidth);
+    expect(metrics.markerSize * 2).toBeCloseTo(metrics.outerWidth);
   });
 
   it('uses the same metrics for long and short sliders', () => {
@@ -18,10 +19,5 @@ describe('slider visual metrics', () => {
 
     expect(metrics.innerWidth).toBeLessThan(metrics.outerWidth);
     expect(metrics.highlightWidth).toBeLessThan(metrics.innerWidth);
-  });
-
-  it('merges heavily overlapping head and tail endpoints', () => {
-    expect(shouldMergeSliderEndpoints({ x: 100, y: 100 }, { x: 112, y: 108 }, 20)).toBe(true);
-    expect(shouldMergeSliderEndpoints({ x: 100, y: 100 }, { x: 150, y: 100 }, 20)).toBe(false);
   });
 });

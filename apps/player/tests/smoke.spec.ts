@@ -12,7 +12,7 @@ test('boots the player shell', async ({ page }) => {
   await expect(page.getByTestId('starter-card')).toContainText('1nnc');
   await expect(page.getByTestId('stage')).toBeVisible();
   await expect(page.locator('#status')).toHaveText('showcase');
-  await expect(page.locator('.difficulty')).toHaveCount(2);
+  await expect(page.locator('.difficulty')).toHaveCount(3);
   await expect(page.locator('.difficulty.active')).toContainText('Endless Fear');
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').objects).toBe(206);
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').background).toBe('BG.jpg');
@@ -27,6 +27,13 @@ test('boots the player shell', async ({ page }) => {
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').video).toBe('sola-imoutos-extra/video.mp4');
   await expect(page.locator('#stage video.stage-video')).toHaveCount(1);
   await expect(page.locator('#stage img.stage-background')).toHaveCount(0);
+
+  await page.locator('.difficulty').nth(2).click();
+  await expect(page.locator('.difficulty.active')).toContainText('Time Freeze');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').objects).toBe(1590);
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').background).toBe('everything-will-freeze/bg.jpg');
+  await expect(page.locator('#stage video.stage-video')).toHaveCount(0);
+  await expect(page.locator('#stage img.stage-background')).toHaveCount(1);
 });
 
 test('resets showcase playback when switching maps', async ({ page }) => {
