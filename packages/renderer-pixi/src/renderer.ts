@@ -234,14 +234,19 @@ export class PixiPlayfieldRenderer {
       return;
     }
 
-    const positionX = transform.offsetX + object.position.x * transform.scale;
-    const positionY = transform.offsetY + object.position.y * transform.scale;
+    const visualPosition = {
+      x: object.position.x + object.stackOffset.x,
+      y: object.position.y + object.stackOffset.y
+    };
+    const positionX = transform.offsetX + visualPosition.x * transform.scale;
+    const positionY = transform.offsetY + visualPosition.y * transform.scale;
     const radius = object.radius * transform.scale;
     const approachRadius = approachCircleRadius(object.startTimeMs, gameTimeMs, radius, preemptMs);
     const colour = objectVisualColour(palette, object.comboIndex, dynamicColours, gameTimeMs);
+    const stackDepth = Math.min(4, Math.hypot(object.stackOffset.x, object.stackOffset.y) / Math.max(1, object.radius * 0.18));
 
     if (object.kind === 'slider') {
-      this.drawSlider(object, gameTimeMs, transform, alpha, radius, hidden ? radius : approachRadius, colour);
+      this.drawSlider(object, gameTimeMs, transform, alpha, radius, hidden ? radius : approachRadius, colour, stackDepth);
       return;
     }
 
@@ -250,7 +255,7 @@ export class PixiPlayfieldRenderer {
       return;
     }
 
-    this.drawHitCircle(positionX, positionY, radius, alpha, hidden ? radius : approachRadius, colour, judgedProgress);
+    this.drawHitCircle(positionX, positionY, radius, alpha, hidden ? radius : approachRadius, colour, judgedProgress, stackDepth);
   }
 
   private drawHitCircle(
@@ -260,13 +265,17 @@ export class PixiPlayfieldRenderer {
     alpha: number,
     approachRadius: number,
     colour: Rgb,
-    judgedProgress = 0
+    judgedProgress = 0,
+    stackDepth = 0
   ): void {
     const base = rgbToNumber(colour);
     const soft = rgbToNumber(mixRgb(colour, [255, 255, 255], 0.45));
     const deep = rgbToNumber(mixRgb(colour, [12, 18, 28], 0.58));
     const hitBloom = smoothstep(judgedProgress);
     const circleRadius = radius * (1 + hitBloom * 0.08);
+    const depthAlpha = alpha * Math.min(0.3, 0.16 + stackDepth * 0.04);
+    this.objects.circle(positionX + radius * 0.12, positionY + radius * 0.14, circleRadius * 1.05).fill({ color: 0x020617, alpha: depthAlpha });
+
     if (approachRadius > radius) {
       this.objects.circle(positionX, positionY, approachRadius).stroke({ color: base, alpha: alpha * 0.85, width: 3 });
     }
@@ -293,7 +302,8 @@ export class PixiPlayfieldRenderer {
     alpha: number,
     radius: number,
     approachRadius: number,
-    colour: Rgb
+    colour: Rgb,
+    stackDepth: number
   ): void {
     const points = object.trackPoints;
     const visualMetrics = sliderVisualMetrics(radius);
@@ -302,17 +312,17 @@ export class PixiPlayfieldRenderer {
       const deep = rgbToNumber(mixRgb(colour, [10, 16, 26], 0.72));
       const base = rgbToNumber(colour);
       const soft = rgbToNumber(mixRgb(colour, [255, 255, 255], 0.5));
-      this.drawSliderPath(points, transform, visualMetrics.outerWidth, deep, alpha * 0.88);
-      this.drawSliderPath(points, transform, visualMetrics.innerWidth, base, alpha * 0.58);
-      this.drawSliderPath(points, transform, visualMetrics.highlightWidth, soft, alpha * 0.76);
+      this.drawSliderPath(points, transform, object.stackOffset, visualMetrics.outerWidth, deep, alpha * 0.88);
+      this.drawSliderPath(points, transform, object.stackOffset, visualMetrics.innerWidth, base, alpha * 0.58);
+      this.drawSliderPath(points, transform, object.stackOffset, visualMetrics.highlightWidth, soft, alpha * 0.76);
     }
 
-    const headX = transform.offsetX + object.position.x * transform.scale;
-    const headY = transform.offsetY + object.position.y * transform.scale;
+    const headX = transform.offsetX + (object.position.x + object.stackOffset.x) * transform.scale;
+    const headY = transform.offsetY + (object.position.y + object.stackOffset.y) * transform.scale;
 
     for (const checkpoint of object.checkpoints) {
-      const checkpointX = transform.offsetX + checkpoint.position.x * transform.scale;
-      const checkpointY = transform.offsetY + checkpoint.position.y * transform.scale;
+      const checkpointX = transform.offsetX + (checkpoint.position.x + object.stackOffset.x) * transform.scale;
+      const checkpointY = transform.offsetY + (checkpoint.position.y + object.stackOffset.y) * transform.scale;
       if (checkpoint.kind === 'tick') {
         this.objects.circle(checkpointX, checkpointY, Math.max(3, radius * 0.16)).fill({ color: rgbToNumber(mixRgb(colour, [255, 255, 255], 0.62)), alpha: alpha * 0.75 });
       }
@@ -321,14 +331,15 @@ export class PixiPlayfieldRenderer {
       }
     }
 
-    this.drawSliderTailMarker(object.trackPoints, transform, visualMetrics.markerSize, alpha);
     this.drawHitCircle(
       headX,
       headY,
       visualMetrics.headRadius,
       alpha,
       approachRadius,
-      colour
+      colour,
+      0,
+      stackDepth
     );
 
     if (gameTimeMs >= object.startTimeMs && gameTimeMs <= object.endTimeMs && object.spanDurationMs > 0 && object.pixelLength > 0) {
@@ -337,8 +348,8 @@ export class PixiPlayfieldRenderer {
       const spanProgress = clamp((elapsed - spanIndex * object.spanDurationMs) / object.spanDurationMs, 0, 1);
       const distance = spanIndex % 2 === 1 ? object.pixelLength * (1 - spanProgress) : object.pixelLength * spanProgress;
       const ball = getSliderPositionAtDistance(object.path, distance);
-      const ballX = transform.offsetX + ball.x * transform.scale;
-      const ballY = transform.offsetY + ball.y * transform.scale;
+      const ballX = transform.offsetX + (ball.x + object.stackOffset.x) * transform.scale;
+      const ballY = transform.offsetY + (ball.y + object.stackOffset.y) * transform.scale;
       this.objects.circle(ballX, ballY, radius * 0.72).fill({ color: rgbToNumber(mixRgb(colour, [255, 255, 255], 0.25)), alpha: 0.92 });
       this.objects.circle(ballX, ballY, radius * 0.72).stroke({ color: 0xfffbeb, alpha: 0.95, width: Math.max(2, radius * 0.08) });
     }
@@ -414,6 +425,7 @@ export class PixiPlayfieldRenderer {
   private drawSliderPath(
     points: readonly { x: number; y: number }[],
     transform: ReturnType<typeof computePlayfieldTransform>,
+    offset: { x: number; y: number },
     width: number,
     color: number,
     alpha: number
@@ -423,10 +435,10 @@ export class PixiPlayfieldRenderer {
       return;
     }
 
-    this.objects.moveTo(transform.offsetX + first.x * transform.scale, transform.offsetY + first.y * transform.scale);
+    this.objects.moveTo(transform.offsetX + (first.x + offset.x) * transform.scale, transform.offsetY + (first.y + offset.y) * transform.scale);
     for (let index = 1; index < points.length; index += 1) {
       const point = points[index]!;
-      this.objects.lineTo(transform.offsetX + point.x * transform.scale, transform.offsetY + point.y * transform.scale);
+      this.objects.lineTo(transform.offsetX + (point.x + offset.x) * transform.scale, transform.offsetY + (point.y + offset.y) * transform.scale);
     }
     this.objects.stroke({ color, alpha, width, cap: 'round', join: 'round' });
   }
@@ -437,44 +449,6 @@ export class PixiPlayfieldRenderer {
       .lineTo(positionX + size * 0.35, positionY)
       .lineTo(positionX - size * 0.35, positionY + size * 0.55)
       .stroke({ color: 0xfffbeb, alpha, width: Math.max(2, size * 0.16) });
-  }
-
-  private drawSliderTailMarker(
-    points: readonly { x: number; y: number }[],
-    transform: ReturnType<typeof computePlayfieldTransform>,
-    size: number,
-    alpha: number
-  ): void {
-    const tail = points.at(-1);
-    const previous = points.length > 1 ? points.at(-2) : null;
-    if (!tail || !previous) {
-      return;
-    }
-
-    const tailX = transform.offsetX + tail.x * transform.scale;
-    const tailY = transform.offsetY + tail.y * transform.scale;
-    const previousX = transform.offsetX + previous.x * transform.scale;
-    const previousY = transform.offsetY + previous.y * transform.scale;
-    const dx = tailX - previousX;
-    const dy = tailY - previousY;
-    const length = Math.hypot(dx, dy);
-    if (length <= 0.001) {
-      return;
-    }
-
-    const tangentX = dx / length;
-    const tangentY = dy / length;
-    const normalX = -tangentY;
-    const normalY = tangentX;
-    const back = size * 0.18;
-    const forward = size * 0.18;
-    const spread = size * 0.58;
-
-    this.objects
-      .moveTo(tailX - tangentX * back + normalX * spread, tailY - tangentY * back + normalY * spread)
-      .lineTo(tailX + tangentX * forward, tailY + tangentY * forward)
-      .lineTo(tailX - tangentX * back - normalX * spread, tailY - tangentY * back - normalY * spread)
-      .stroke({ color: 0xfffbeb, alpha: alpha * 0.92, width: Math.max(2, size * 0.16), cap: 'round', join: 'round' });
   }
 
   private drawArc(

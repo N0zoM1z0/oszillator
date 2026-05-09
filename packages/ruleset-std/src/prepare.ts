@@ -1,5 +1,5 @@
 import type { Vec2 } from '@oszillator/core';
-import { PLAYFIELD_HEIGHT, vec2 } from '@oszillator/core';
+import { distanceVec2, PLAYFIELD_HEIGHT, vec2 } from '@oszillator/core';
 import type { DifficultySection, ParsedOsuFile, RawCircle, RawHitObject, RawSlider, RawSpinner } from '@oszillator/osu-parser';
 import { buildSliderPath, getSliderPolylineUntilDistance, getSliderPositionAtDistance, type SliderPath } from '@oszillator/slider-geometry';
 
@@ -22,6 +22,7 @@ export type PreparedCircle = {
   radius: number;
   newCombo: boolean;
   comboIndex: number;
+  stackOffset: Vec2;
 };
 
 export type PreparedSlider = {
@@ -33,6 +34,7 @@ export type PreparedSlider = {
   radius: number;
   newCombo: boolean;
   comboIndex: number;
+  stackOffset: Vec2;
   repeatCount: number;
   pixelLength: number;
   path: SliderPath;
@@ -52,6 +54,7 @@ export type PreparedSpinner = {
   radius: number;
   newCombo: boolean;
   comboIndex: number;
+  stackOffset: Vec2;
 };
 
 export type PreparedObject = PreparedCircle | PreparedSlider | PreparedSpinner;
@@ -80,7 +83,8 @@ const prepareCircle = (raw: RawCircle, radius: number, comboIndex: number): Prep
   position: vec2(raw.x, raw.y),
   radius,
   newCombo: raw.newCombo,
-  comboIndex
+  comboIndex,
+  stackOffset: vec2(0, 0)
 });
 
 const createSliderCheckpoints = (
@@ -143,6 +147,7 @@ const prepareSlider = (
     radius: derivedDifficulty.circleRadius,
     newCombo: raw.newCombo,
     comboIndex,
+    stackOffset: vec2(0, 0),
     repeatCount: raw.repeatCount,
     pixelLength: raw.pixelLength,
     path,
@@ -162,8 +167,54 @@ const prepareSpinner = (raw: RawSpinner, radius: number, comboIndex: number): Pr
   position: vec2(256, 192),
   radius,
   newCombo: raw.newCombo,
-  comboIndex
+  comboIndex,
+  stackOffset: vec2(0, 0)
 });
+
+const isStackableObject = (object: PreparedObject): object is PreparedCircle | PreparedSlider =>
+  object.kind === 'circle' || object.kind === 'slider';
+
+const applyVisualStacking = (
+  objects: PreparedObject[],
+  difficulty: DerivedDifficulty,
+  stackLeniency: number
+): void => {
+  const stackHeights = new Array<number>(objects.length).fill(0);
+  const stackDistance = difficulty.circleRadius * 0.62;
+  const stackTimeMs = difficulty.preemptMs * stackLeniency;
+  const stackOffsetUnit = Math.min(8, Math.max(3, difficulty.circleRadius * 0.18));
+
+  for (let index = 0; index < objects.length; index += 1) {
+    const object = objects[index]!;
+    if (!isStackableObject(object)) {
+      continue;
+    }
+
+    for (let previousIndex = index - 1; previousIndex >= 0; previousIndex -= 1) {
+      const previous = objects[previousIndex]!;
+      if (object.startTimeMs - previous.startTimeMs > stackTimeMs) {
+        break;
+      }
+      if (!isStackableObject(previous)) {
+        continue;
+      }
+      if (distanceVec2(object.position, previous.position) > stackDistance) {
+        continue;
+      }
+
+      stackHeights[index] = Math.max(stackHeights[index]!, stackHeights[previousIndex]! + 1);
+    }
+  }
+
+  for (let index = 0; index < objects.length; index += 1) {
+    const height = stackHeights[index]!;
+    if (height <= 0) {
+      continue;
+    }
+
+    objects[index]!.stackOffset = vec2(-height * stackOffsetUnit, -height * stackOffsetUnit);
+  }
+};
 
 const clampDifficulty = (value: number): number => Math.min(Math.max(value, 0), 10);
 
@@ -233,6 +284,7 @@ export const prepareBeatmap = (parsed: ParsedOsuFile, options: PrepareBeatmapOpt
   }
 
   objects.sort((left, right) => left.startTimeMs - right.startTimeMs);
+  applyVisualStacking(objects, difficulty, parsed.general.stackLeniency);
 
   return {
     formatVersion: parsed.formatVersion,

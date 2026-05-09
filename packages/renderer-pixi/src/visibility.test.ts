@@ -12,7 +12,8 @@ const object = (id: string, startTimeMs: number, endTimeMs = startTimeMs): Prepa
   position: { x: 256, y: 192 },
   radius: 36,
   newCombo: false,
-  comboIndex: 0
+  comboIndex: 0,
+  stackOffset: { x: 0, y: 0 }
 });
 
 describe('renderer visibility helpers', () => {

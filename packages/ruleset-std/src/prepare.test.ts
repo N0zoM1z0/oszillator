@@ -103,6 +103,40 @@ SliderTickRate: 1
     expect(beatmap.objects.map((object) => object.comboIndex)).toEqual([0, 1, 3, 3]);
   });
 
+  it('adds visual stack offsets for close tapping overlaps without changing gameplay positions', () => {
+    const parsed = parseOsu(`osu file format v14
+[General]
+AudioFilename: sample.wav
+StackLeniency: 0.7
+Mode: 0
+[Metadata]
+Title: Test Song
+Artist: Artist
+Creator: Mapper
+Version: Stacks
+[Difficulty]
+CircleSize: 4
+OverallDifficulty: 6
+ApproachRate: 7
+SliderMultiplier: 1.4
+SliderTickRate: 1
+[TimingPoints]
+0,500,4,2,0,60,1,0
+[HitObjects]
+256,192,1000,1,0,0:0:0:0:
+258,194,1120,1,0,0:0:0:0:
+260,196,1240,1,0,0:0:0:0:
+360,260,1360,1,0,0:0:0:0:
+`);
+    const beatmap = prepareBeatmap(parsed);
+
+    expect(beatmap.objects[0]).toMatchObject({ position: { x: 256, y: 192 }, stackOffset: { x: 0, y: 0 } });
+    expect(beatmap.objects[1]?.stackOffset.x).toBeLessThan(0);
+    expect(beatmap.objects[1]?.stackOffset.y).toBeLessThan(0);
+    expect(Math.abs(beatmap.objects[2]?.stackOffset.x ?? 0)).toBeGreaterThan(Math.abs(beatmap.objects[1]?.stackOffset.x ?? 0));
+    expect(beatmap.objects[3]).toMatchObject({ position: { x: 360, y: 260 }, stackOffset: { x: 0, y: 0 } });
+  });
+
   it('applies hardrock difficulty and vertical object mirroring', () => {
     const parsed = parseOsu(`osu file format v14
 [General]
