@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sliderVisualMetrics } from './renderer';
+import { objectDepthStyle, sliderVisualMetrics } from './renderer';
 
 describe('slider visual metrics', () => {
   it('keeps the slider head aligned with the outer track diameter', () => {
@@ -19,5 +19,15 @@ describe('slider visual metrics', () => {
 
     expect(metrics.innerWidth).toBeLessThan(metrics.outerWidth);
     expect(metrics.highlightWidth).toBeLessThan(metrics.innerWidth);
+  });
+
+  it('emphasizes objects as they approach hit time without moving them', () => {
+    const early = objectDepthStyle({ startTimeMs: 2000 }, 900, 1200);
+    const near = objectDepthStyle({ startTimeMs: 2000 }, 1950, 1200);
+
+    expect(near.alpha).toBeGreaterThan(early.alpha);
+    expect(near.scale).toBeGreaterThan(early.scale);
+    expect(near.ringAlpha).toBeGreaterThan(early.ringAlpha);
+    expect(near.shadowAlpha).toBeGreaterThan(early.shadowAlpha);
   });
 });
