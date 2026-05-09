@@ -21,13 +21,16 @@ describe('slider visual metrics', () => {
     expect(metrics.highlightWidth).toBeLessThan(metrics.innerWidth);
   });
 
-  it('emphasizes objects as they approach hit time without moving them', () => {
+  it('keeps object depth free of extra luminance changes', () => {
     const early = objectDepthStyle({ startTimeMs: 2000 }, 900, 1200);
     const near = objectDepthStyle({ startTimeMs: 2000 }, 1950, 1200);
 
-    expect(near.alpha).toBeGreaterThan(early.alpha);
+    expect(early.alpha).toBe(1);
+    expect(near.alpha).toBe(1);
+    expect(early.ringAlpha).toBe(1);
+    expect(near.ringAlpha).toBe(1);
+    expect(early.shadowAlpha).toBe(near.shadowAlpha);
+    expect(early.edgeWidth).toBe(near.edgeWidth);
     expect(near.scale).toBeGreaterThan(early.scale);
-    expect(near.ringAlpha).toBeGreaterThan(early.ringAlpha);
-    expect(near.shadowAlpha).toBeGreaterThan(early.shadowAlpha);
   });
 });

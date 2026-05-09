@@ -127,14 +127,13 @@ export const objectDepthStyle = (
   const timeUntilHitMs = object.startTimeMs - gameTimeMs;
   const progress = clamp(1 - timeUntilHitMs / Math.max(1, preemptMs), 0, 1);
   const focus = smoothstep(progress);
-  const farFuture = clamp(timeUntilHitMs / Math.max(1, preemptMs), 0, 1);
 
   return {
-    alpha: 0.62 + focus * 0.38,
-    scale: 0.94 + focus * 0.06,
-    ringAlpha: 0.32 + focus * 0.68,
-    shadowAlpha: 0.12 + focus * 0.2,
-    edgeWidth: 0.72 + focus * 0.42 + farFuture * 0.08
+    alpha: 1,
+    scale: 0.97 + focus * 0.03,
+    ringAlpha: 1,
+    shadowAlpha: 0.2,
+    edgeWidth: 1
   };
 };
 

@@ -1,6 +1,6 @@
 # Architecture
 
-`oszillator` is split into browser-focused packages with clear gameplay boundaries.
+`oszillator` is split into browser-focused packages so the web-player UI stays separate from osu!standard-style gameplay logic.
 
 - `apps/player` owns UI, local import, Web Audio orchestration, and Pixi canvas lifecycle.
 - `packages/osz-loader` unzips local `.osz` archives and builds an asset manifest.

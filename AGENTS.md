@@ -2,12 +2,12 @@
 
 ## Project
 
-Build `oszillator`, an unofficial local-first `.osz` web player and trainer for osu!standard-compatible gameplay.
+Build `oszillator`, an unofficial browser-based `.osz` player experiment for osu!standard-compatible gameplay.
 
 ## Hard boundaries
 
 - osu!standard only
-- local `.osz` import only for MVP
+- local `.osz` import only
 - no ranking, leaderboard, login, or online score submission
 - no online beatmap download
 - no official branding or bundled official assets

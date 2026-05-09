@@ -1,14 +1,14 @@
 # oszillator
 
-An independent, local-first `.osz` player and trainer for osu!standard-style practice.
+An unofficial osu!standard-style player experiment for the browser.
 
-Drop a beatmap archive into the browser, pick a difficulty, and play. `oszillator` parses the map locally, keeps the Web Audio clock as the gameplay timeline, renders the playfield with Pixi, and stores practice scores on your machine only.
+`oszillator` started from a simple idea: what if osu!standard could run in a web page, just because it would be fun? Drop a beatmap archive into the browser, pick a difficulty, and click circles. The app parses the map locally, keeps the Web Audio clock as the gameplay timeline, renders the playfield with Pixi, and keeps scores on your machine only.
 
 ## Online Demo
 
 Try the hosted demo here: https://n0zom1z0.github.io/oszillator/
 
-The demo is a static GitHub Pages build of the same local-first player. Import a `.osz` archive from your own machine and the beatmap, background, video, and audio are processed in your browser; the app does not upload beatmap files or submit scores to a server. No sample beatmaps or copyrighted audio are bundled with the hosted site.
+The demo is a static GitHub Pages build of the same browser player. Import a `.osz` archive from your own machine and the beatmap, background, video, and audio are processed in your browser; the app does not upload beatmap files or submit scores to a server. The page also includes a small showcase so the first screen is not empty before you import your own archive.
 
 [![Watch the oszillator autoplay demo](docs/assets/demo-poster.jpg)](https://www.youtube.com/watch?v=0RBsNySsgOs)
 
@@ -16,11 +16,11 @@ The demo is a static GitHub Pages build of the same local-first player. Import a
 
 ## Highlights
 
-- Local `.osz` import with no account, server sync, or online beatmap download.
+- Drag-and-drop `.osz` import with no account, server sync, or online beatmap download.
 - osu!standard-focused gameplay with circles, sliders, spinners, hit judgements, combo, accuracy, and local scores.
 - Web Audio based timing so judgement uses the audio clock rather than frame deltas.
 - Autoplay showcase mode for hands-free previews and visual demos.
-- Practice modifiers: Hidden, HardRock, Double Time, and Nightcore.
+- osu!-style modifiers: Hidden, HardRock, Double Time, and Nightcore.
 - Beatmap background image and browser-supported video playback from the imported archive.
 - Dynamic cursor trail, spinner effects, smoke key, hit offset history, and optional dynamic colour cycling.
 - Parser and loader designed to warn and continue when real-world `.osu` files contain unknown fields.
@@ -30,11 +30,12 @@ The demo is a static GitHub Pages build of the same local-first player. Import a
 - `Z` / `X`: keyboard hit buttons.
 - Mouse / pointer: aim and click.
 - `C`: smoke trail.
-- `Autoplay`: let the trainer perform an idealized replay.
+- `Autoplay`: let oszillator perform an idealized replay.
 - `Dynamic colours`: opt into animated palette cycling for cursor and objects.
 
 ## Product Boundaries
 
+- Unofficial osu!standard-style browser experiment.
 - osu!standard-style gameplay only.
 - Local archive import only.
 - No ranking, leaderboard, login, server sync, or online score submission.

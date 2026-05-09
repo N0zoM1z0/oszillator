@@ -114,7 +114,7 @@ root.innerHTML = `
         </a>
         <a class="brand-copy" href="https://github.com/N0zoM1z0/oszillator" target="_blank" rel="noreferrer">
           <h1>oszillator</h1>
-          <p>local osu!standard trainer</p>
+          <p>osu!standard in a browser</p>
         </a>
       </header>
       <label class="drop-zone" data-testid="drop-zone">
@@ -123,8 +123,8 @@ root.innerHTML = `
       </label>
       <section class="starter-card" data-testid="starter-card">
         <p class="eyebrow">No beatmap yet?</p>
-        <h2>Try the showcase archive</h2>
-        <p>Download the showcase .osz, then import it here from your machine. Playback still stays local in your browser.</p>
+        <h2>Grab a showcase map</h2>
+        <p>Download the .osz, import it here, and start clicking circles. Everything runs inside this browser tab.</p>
         <div class="starter-actions">
           <a class="starter-download" href="https://n0zom1z0.lanzn.com/isZQ33ov1gij" target="_blank" rel="noreferrer">Download .osz</a>
           <button id="copy-demo-password-button" class="starter-copy" type="button" data-password="1nnc">Copy password</button>
