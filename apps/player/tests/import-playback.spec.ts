@@ -130,7 +130,11 @@ const osuDifficulty = (
   version: string,
   mode: number,
   hitObjects: string,
-  difficulty: { circleSize: number; overallDifficulty: number; approachRate: number } = {
+  difficulty: {
+    circleSize: number;
+    overallDifficulty: number;
+    approachRate: number;
+  } = {
     circleSize: 4,
     overallDifficulty: 6,
     approachRate: 7
@@ -254,7 +258,12 @@ test('imports a local osz and exercises playback controls', async ({ page }) => 
   await page.click('#play-button');
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('playing');
   await page.waitForFunction(
-    () => ((window as Window & { __oszillatorDebug?: { getGameTimeMs: () => number } }).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 1980,
+    () =>
+      ((
+        window as Window & {
+          __oszillatorDebug?: { getGameTimeMs: () => number };
+        }
+      ).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 1980,
     undefined,
     { polling: 20 }
   );
@@ -333,6 +342,135 @@ test('supports autoplay and gameplay mod toggles', async ({ page }) => {
   expect(realErrors).toEqual([]);
 });
 
+test('reuses the canvas, AudioContext and media source across mods and same-audio difficulties', async ({ page }) => {
+  await page.addInitScript(() => {
+    const probe = window as Window & {
+      __audioContexts?: number;
+      __mediaSources?: number;
+    };
+    probe.__audioContexts = 0;
+    probe.__mediaSources = 0;
+    window.AudioContext = new Proxy(window.AudioContext, {
+      construct(target, args) {
+        probe.__audioContexts = (probe.__audioContexts ?? 0) + 1;
+        return Reflect.construct(target, args);
+      }
+    });
+    const create = AudioContext.prototype.createMediaElementSource;
+    AudioContext.prototype.createMediaElementSource = function (element) {
+      probe.__mediaSources = (probe.__mediaSources ?? 0) + 1;
+      return create.call(this, element);
+    };
+  });
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'synthetic.osz',
+    mimeType: 'application/zip',
+    buffer: syntheticOsz()
+  });
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('ready');
+  const canvas = await page.locator('canvas').elementHandle();
+  const background = await page.locator('.stage-background').getAttribute('src');
+  const resources = await page.evaluate(() => {
+    const probe = window as Window & {
+      __audioContexts?: number;
+      __mediaSources?: number;
+    };
+    return [probe.__audioContexts, probe.__mediaSources];
+  });
+  for (const mod of ['HD', 'DT', 'NC', 'HR']) {
+    await page.locator(`[data-mod="${mod}"]`).click();
+    await expect(page.locator(`[data-mod="${mod}"]`)).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('ready');
+    expect(await canvas?.evaluate((element) => element.isConnected)).toBe(true);
+    await expect(page.locator('.stage-background')).toHaveAttribute('src', background!);
+  }
+  await page.locator('.difficulty:not([disabled])').first().click();
+  await expect(page.getByTestId('debug')).toContainText('normal.osu');
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('ready');
+  expect(await canvas?.evaluate((element) => element.isConnected)).toBe(true);
+  expect(
+    await page.evaluate(() => {
+      const probe = window as Window & {
+        __audioContexts?: number;
+        __mediaSources?: number;
+      };
+      return [probe.__audioContexts, probe.__mediaSources];
+    })
+  ).toEqual(resources);
+  await page.locator('#autoplay-button').click();
+  await page.locator('#play-button').click();
+  await expect.poll(async () => Number(await page.locator('#score').textContent()), { timeout: 6000 }).toBeGreaterThan(0);
+});
+
+test('keeps input coordinates aligned after viewport resize', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'synthetic.osz',
+    mimeType: 'application/zip',
+    buffer: syntheticOsz()
+  });
+  await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('ready');
+  await page.setViewportSize({ width: 1050, height: 850 });
+  await expect
+    .poll(async () => page.locator('canvas').evaluate((canvas) => canvas.clientWidth === canvas.parentElement?.clientWidth))
+    .toBe(true);
+  await moveMouseToPlayfield(page, 256, 192);
+  await page.click('#play-button');
+  await page.waitForFunction(
+    () =>
+      ((
+        window as Window & {
+          __oszillatorDebug?: { getGameTimeMs: () => number };
+        }
+      ).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 1980,
+    undefined,
+    { polling: 20 }
+  );
+  await page.keyboard.press('z');
+  await expect.poll(async () => Number(await page.locator('#score').textContent())).toBeGreaterThan(0);
+});
+
+test.describe('pending showcase download', () => {
+  test.use({ serviceWorkers: 'block' });
+  test('cannot block or restart a newer local import', async ({ page }) => {
+    let releaseDownload = () => {};
+    const heldDownload = new Promise<void>((resolve) => {
+      releaseDownload = resolve;
+    });
+    let downloadRequested = false;
+    await page.route('**/showcase/audio.mp3', async (route) => {
+      downloadRequested = true;
+      await heldDownload;
+      await route.continue();
+    });
+    await page.goto('/');
+    await expect.poll(() => downloadRequested).toBe(true);
+    try {
+      await page.locator('#file-input').setInputFiles({
+        name: 'synthetic.osz',
+        mimeType: 'application/zip',
+        buffer: syntheticOsz()
+      });
+      await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('ready');
+      await expect(page.locator('#status')).toHaveText('ready');
+      const finished = page.waitForResponse('**/showcase/audio.mp3');
+      releaseDownload();
+      await (await finished).finished();
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const debug = JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}');
+      expect(debug.audio).toBe('ready');
+      expect(debug.gameTimeMs).toBe(0);
+      expect(debug.autoplay).toBe(false);
+      expect(debug.mods).toEqual([]);
+      await page.click('#play-button');
+      await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('playing');
+    } finally {
+      releaseDownload();
+    }
+  });
+});
+
 test('keeps controls responsive after repeated restarts and beatmap rebuilds', async ({ page }) => {
   const realErrors: string[] = [];
   page.on('pageerror', (error) => realErrors.push(error.message));
@@ -372,7 +510,12 @@ test('keeps controls responsive after repeated restarts and beatmap rebuilds', a
   await page.click('#play-button');
   await expect.poll(async () => JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}').audio).toBe('playing');
   await page.waitForFunction(
-    () => ((window as Window & { __oszillatorDebug?: { getGameTimeMs: () => number } }).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 1980,
+    () =>
+      ((
+        window as Window & {
+          __oszillatorDebug?: { getGameTimeMs: () => number };
+        }
+      ).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 1980,
     undefined,
     { polling: 20 }
   );
@@ -419,10 +562,135 @@ test('shows a countdown overlay during long waits', async ({ page }) => {
   await page.locator('#autoplay-button').click();
   await page.click('#play-button');
   await page.waitForFunction(
-    () => ((window as Window & { __oszillatorDebug?: { getGameTimeMs: () => number } }).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 2400,
+    () =>
+      ((
+        window as Window & {
+          __oszillatorDebug?: { getGameTimeMs: () => number };
+        }
+      ).__oszillatorDebug?.getGameTimeMs() ?? 0) >= 2400,
     undefined,
     { polling: 20 }
   );
   await expect(page.getByTestId('wait-overlay')).toHaveClass(/visible/);
   await expect(page.locator('#wait-progress')).toBeVisible();
+});
+
+test('pointer movement preserves unchanged judgement history nodes', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'synthetic.osz',
+    mimeType: 'application/zip',
+    buffer: syntheticOsz()
+  });
+  await expect(page.locator('#status')).toHaveText('ready');
+  await page.click('#autoplay-button');
+  await page.click('#play-button');
+  await expect(page.locator('#offset-chart i')).toHaveCount(1, {
+    timeout: 8000
+  });
+  await page.click('#pause-button');
+  await page.click('#autoplay-button');
+  const observation = await page.evaluate(async () => {
+    const chart = document.querySelector('#offset-chart')!;
+    const first = chart.firstChild;
+    let mutations = 0;
+    const observer = new MutationObserver((records) => {
+      mutations += records.length;
+    });
+    observer.observe(chart, { childList: true });
+    const stage = document.querySelector('#stage')!;
+    const rect = stage.getBoundingClientRect();
+    for (let index = 0; index < 50; index += 1) {
+      stage.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: rect.left + 200 + index,
+          clientY: rect.top + 180
+        })
+      );
+    }
+    await Promise.resolve();
+    observer.disconnect();
+    return { sameNode: chart.firstChild === first, mutations };
+  });
+  expect(observation).toEqual({ sameNode: true, mutations: 0 });
+});
+
+test('persists one score when IndexedDB completion is held across multiple frames', async ({ page }) => {
+  await page.addInitScript(() => {
+    const probe = window as Window & {
+      __holdScoreStorage?: boolean;
+      __scoreOpens?: number;
+      __releaseScoreStorage?: () => void;
+    };
+    const pending: Array<() => void> = [];
+    probe.__scoreOpens = 0;
+    const open = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function (...args: Parameters<typeof open>) {
+      if (probe.__holdScoreStorage) probe.__scoreOpens = (probe.__scoreOpens ?? 0) + 1;
+      return open.apply(this, args);
+    };
+    const add = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
+      if (this instanceof IDBOpenDBRequest && type === 'success' && probe.__holdScoreStorage && typeof listener === 'function') {
+        const callback = listener.bind(this);
+        return add.call(
+          this,
+          type,
+          (event) => {
+            pending.push(() => callback(event));
+          },
+          options
+        );
+      }
+      return add.call(this, type, listener, options);
+    };
+    probe.__releaseScoreStorage = () => {
+      probe.__holdScoreStorage = false;
+      pending.splice(0).forEach((release) => release());
+    };
+  });
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'synthetic.osz',
+    mimeType: 'application/zip',
+    buffer: syntheticOsz()
+  });
+  await expect(page.locator('#status')).toHaveText('ready');
+  await page.evaluate(() => {
+    (window as Window & { __holdScoreStorage?: boolean }).__holdScoreStorage = true;
+  });
+  await page.click('#play-button');
+  await page.waitForFunction(() => ((window as Window & { __scoreOpens?: number }).__scoreOpens ?? 0) > 0);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let frames = 0;
+        const frame = () => {
+          if (++frames >= 6) resolve();
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      })
+  );
+  expect(await page.evaluate(() => (window as Window & { __scoreOpens?: number }).__scoreOpens)).toBe(1);
+  await page.evaluate(() => (window as Window & { __releaseScoreStorage?: () => void }).__releaseScoreStorage?.());
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open('oszillator');
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const count = await new Promise<number>((resolve, reject) => {
+          const request = database.transaction('scores').objectStore('scores').count();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        database.close();
+        return count;
+      })
+    )
+    .toBe(1);
 });

@@ -3,12 +3,12 @@ import type { GameplayButton, GameplayInputEvent, Vec2 } from '@oszillator/core'
 import {
   RulesetStdGame,
   deriveDifficulty,
-  prepareBeatmap,
   type GameplayMod,
   type HitResult,
   type JudgementEvent,
   type PreparedBeatmap,
-  type PreparedObject
+  type PreparedObject,
+  type ScoreState
 } from '@oszillator/ruleset-std';
 import { PixiPlayfieldRenderer, type CursorTrailPoint, type SmokePuff } from '@oszillator/renderer-pixi';
 import type { OszArchiveManifest, BeatmapManifestEntry } from '@oszillator/osz-loader';
@@ -16,7 +16,9 @@ import { openOszillatorDb, saveBeatmapSet, saveLocalScore } from '@oszillator/st
 import { getSliderPositionAtDistance } from '@oszillator/slider-geometry';
 
 import { InputManager } from './input/input-manager';
-import { isShowcaseBeatmap, loadShowcaseManifest } from './showcase';
+import { ensureShowcaseAssets, isShowcaseBeatmap, loadShowcaseManifest } from './showcase';
+import { RunScorePersistence } from './score-persistence';
+import { PreparedBeatmapCache } from './prepared-beatmap-cache';
 import './styles.css';
 
 type AppState = {
@@ -60,7 +62,24 @@ let audioEngine: WebAudioEngine | null = null;
 let game = new RulesetStdGame();
 let inputManager: InputManager | null = null;
 let rafId = 0;
-let scoreSavedForDifficulty: string | null = null;
+const preparedBeatmaps = new PreparedBeatmapCache();
+const scorePersistence = new RunScorePersistence(async (score) => {
+  const database = await openOszillatorDb();
+  try {
+    await saveLocalScore(database, score);
+  } finally {
+    database.close();
+  }
+});
+let lastHudScore: ScoreState | null = null;
+let hitHistoryVersion = 0;
+let lastHudHistoryVersion = -1;
+let selectionReady = false;
+let audioManifest: OszArchiveManifest | null = null;
+let audioPath: string | null = null;
+let stageMediaManifest: OszArchiveManifest | null = null;
+let stageMediaBeatmap: BeatmapManifestEntry | null = null;
+let cachedStageSize: ReturnType<typeof readStageSize> | null = null;
 let loopEnabled = false;
 let lastDebugRenderMs = 0;
 let preparedEndTimeMs = 0;
@@ -264,7 +283,7 @@ const resetShowcasePreview = (): void => {
 };
 
 const currentGameTimeMs = (): number => {
-  if (isShowcaseBeatmap(state.selected) && showcasePreviewActive && audioEngine?.getState() !== 'playing') {
+  if (isShowcaseBeatmap(state.selected, state.manifest) && showcasePreviewActive && audioEngine?.getState() !== 'playing') {
     return showcasePreviewTimeMs();
   }
 
@@ -338,6 +357,7 @@ const difficultySortValue = (beatmap: BeatmapManifestEntry): number => {
 };
 
 const renderDebug = (force = false): void => {
+  renderHud();
   const now = performance.now();
   if (!force && now - lastDebugRenderMs < 250) {
     return;
@@ -345,10 +365,6 @@ const renderDebug = (force = false): void => {
 
   lastDebugRenderMs = now;
   const gameState = game.getState();
-  scoreElement.textContent = String(gameState.score.score);
-  accuracyElement.textContent = `${(gameState.score.accuracy * 100).toFixed(2)}%`;
-  comboElement.textContent = String(gameState.score.combo);
-  renderJudgementHud(gameState.score.counts);
   debugElement.textContent = JSON.stringify(
     {
       archiveId: state.manifest?.archiveId ?? null,
@@ -372,11 +388,27 @@ const renderDebug = (force = false): void => {
   );
 };
 
+const renderHud = (gameState = game.getState()): void => {
+  if (lastHudScore === gameState.score && lastHudHistoryVersion === hitHistoryVersion) {
+    return;
+  }
+  lastHudScore = gameState.score;
+  scoreElement.textContent = String(gameState.score.score);
+  accuracyElement.textContent = `${(gameState.score.accuracy * 100).toFixed(2)}%`;
+  comboElement.textContent = String(gameState.score.combo);
+  renderJudgementHud(gameState.score.counts);
+};
+
 const renderJudgementHud = (counts: Record<HitResult, number>): void => {
   count300Element.textContent = String(counts.great);
   count100Element.textContent = String(counts.ok);
   count50Element.textContent = String(counts.meh);
   countMissElement.textContent = String(counts.miss);
+
+  if (lastHudHistoryVersion === hitHistoryVersion) {
+    return;
+  }
+  lastHudHistoryVersion = hitHistoryVersion;
 
   const last = hitHistory.at(-1);
   lastResultElement.textContent = last ? `${labelForHitResult(last.result)} ${formatOffset(last.offsetMs)}` : '-';
@@ -444,6 +476,7 @@ const formatOffset = (offsetMs: number): string => {
 };
 
 const recordJudgements = (judgements: readonly JudgementEvent[]): void => {
+  let changed = false;
   for (const judgement of judgements) {
     if (typeof judgement.offsetMs !== 'number' || !Number.isFinite(judgement.offsetMs)) {
       continue;
@@ -454,11 +487,13 @@ const recordJudgements = (judgements: readonly JudgementEvent[]): void => {
       offsetMs: judgement.offsetMs,
       timeMs: judgement.timeMs
     });
+    changed = true;
   }
 
   if (hitHistory.length > MAX_HIT_HISTORY) {
     hitHistory.splice(0, hitHistory.length - MAX_HIT_HISTORY);
   }
+  if (changed) hitHistoryVersion += 1;
 };
 
 const selectedMods = (): GameplayMod[] => [...activeMods];
@@ -510,17 +545,28 @@ const importFile = async (file: File): Promise<void> => {
   worker.postMessage({ type: 'import-osz', importId, buffer }, [buffer]);
 };
 
-const requestSelectBeatmap = (beatmap: BeatmapManifestEntry | null): Promise<void> => {
+const requestSelectBeatmap = async (beatmap: BeatmapManifestEntry | null): Promise<void> => {
   const requestId = ++selectionRequestId;
-  selectionQueue = selectionQueue
-    .catch(() => undefined)
-    .then(async () => {
-      if (requestId !== selectionRequestId) {
-        return;
-      }
-      await selectBeatmap(beatmap, requestId);
-    });
-  return selectionQueue;
+  const manifest = state.manifest;
+  try {
+    // Downloads do not hold the resource mutation queue: a newer local import
+    // must remain selectable while an abandoned showcase request is pending.
+    if (beatmap && manifest) await ensureShowcaseAssets(manifest, beatmap);
+    if (requestId !== selectionRequestId || manifest !== state.manifest) return;
+    selectionQueue = selectionQueue
+      .catch(() => undefined)
+      .then(async () => {
+        if (requestId !== selectionRequestId) return;
+        await selectBeatmap(beatmap, requestId);
+      });
+    await selectionQueue;
+  } catch (error) {
+    if (requestId === selectionRequestId) {
+      state.errors.push(`Selection failed: ${error instanceof Error ? error.message : String(error)}`);
+      renderSidebar();
+      renderDebug(true);
+    }
+  }
 };
 
 const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: number): Promise<void> => {
@@ -528,17 +574,14 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: nu
     return;
   }
 
-  await teardownAudio();
-  if (requestId !== selectionRequestId) {
-    return;
-  }
+  const manifest = state.manifest;
 
-  teardownStageMedia();
-  teardownRenderer();
+  selectionReady = false;
+  audioEngine?.stop();
   resetShowcasePreview();
   state.selected = beatmap;
-  state.prepared = beatmap ? prepareBeatmap(beatmap.parsed, { mods: selectedMods() }) : null;
-  scoreSavedForDifficulty = null;
+  state.prepared = beatmap ? preparedBeatmaps.get(beatmap.parsed, { mods: selectedMods() }) : null;
+  scorePersistence.startRun();
   preparedEndTimeMs = state.prepared?.objects.reduce((endTime, object) => Math.max(endTime, object.endTimeMs), 0) ?? 0;
   game = new RulesetStdGame();
   resetVisualState();
@@ -547,18 +590,31 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: nu
     game.start(state.prepared);
   }
 
-  setupStageMedia(beatmap);
+  if (stageMediaManifest !== manifest || stageMediaBeatmap !== beatmap) {
+    teardownStageMedia();
+    setupStageMedia(beatmap);
+    stageMediaManifest = manifest;
+    stageMediaBeatmap = beatmap;
+  }
+  if (videoElement && videoElement.currentTime !== 0) videoElement.currentTime = 0;
+  if (!state.prepared) {
+    teardownRenderer();
+    await teardownAudio();
+    renderSidebar();
+    renderDebug(true);
+    return;
+  }
   await mountRenderer();
   if (requestId !== selectionRequestId) {
-    teardownRenderer();
     return;
   }
 
   await setupAudio();
   if (requestId !== selectionRequestId) {
-    await teardownAudio();
     return;
   }
+
+  selectionReady = true;
 
   renderSidebar();
   renderDebug(true);
@@ -566,6 +622,7 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: nu
 
 const resetVisualState = (): void => {
   hitHistory.length = 0;
+  hitHistoryVersion += 1;
   smokePuffs.length = 0;
   cursorTrail.length = 0;
   hideWaitOverlay();
@@ -584,13 +641,15 @@ const setupStageMedia = (beatmap: BeatmapManifestEntry | null): void => {
   if (beatmap.videoPath) {
     const videoUrl = createObjectUrlForArchiveEntry(beatmap.videoPath);
     if (videoUrl) {
-      videoElement = document.createElement('video');
-      videoElement.src = videoUrl;
-      videoElement.className = 'stage-video';
-      videoElement.muted = true;
-      videoElement.playsInline = true;
-      videoElement.preload = 'auto';
-      videoElement.addEventListener('error', () => {
+      const video = document.createElement('video');
+      videoElement = video;
+      video.src = videoUrl;
+      video.className = 'stage-video';
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      video.addEventListener('error', () => {
+        if (videoElement !== video) return;
         state.errors.push(`Video unavailable: ${beatmap.videoPath}`);
         renderDebug(true);
       });
@@ -608,6 +667,7 @@ const setupStageMedia = (beatmap: BeatmapManifestEntry | null): void => {
       backgroundElement.decoding = 'async';
       backgroundElement.className = 'stage-background';
       backgroundElement.addEventListener('error', () => {
+        if (!backgroundElement.isConnected) return;
         state.errors.push(`Background unavailable: ${beatmap.backgroundPath}`);
         renderDebug(true);
       });
@@ -617,12 +677,20 @@ const setupStageMedia = (beatmap: BeatmapManifestEntry | null): void => {
 };
 
 const teardownStageMedia = (): void => {
-  stageMediaElement.innerHTML = '';
+  const video = videoElement;
   videoElement = null;
+  if (video) {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+  }
+  stageMediaElement.innerHTML = '';
   for (const url of mediaObjectUrls) {
     URL.revokeObjectURL(url);
   }
   mediaObjectUrls = [];
+  stageMediaManifest = null;
+  stageMediaBeatmap = null;
 };
 
 const createObjectUrlForArchiveEntry = (path: string): string | null => {
@@ -691,73 +759,101 @@ const persistImportedLibrary = async (manifest: OszArchiveManifest): Promise<voi
 
   try {
     const database = await openOszillatorDb();
-    await saveBeatmapSet(
-      database,
-      {
-        id: manifest.archiveId,
-        title: firstBeatmap.parsed.metadata.title,
-        artist: firstBeatmap.parsed.metadata.artist,
-        creator: firstBeatmap.parsed.metadata.creator,
-        importedAt: Date.now()
-      },
-      manifest.beatmaps.map((beatmap) => ({
-        id: beatmap.normalizedPath,
-        setId: manifest.archiveId,
-        version: beatmap.parsed.metadata.version,
-        objectCount: beatmap.parsed.hitObjects.length,
-        audioPath: beatmap.audioPath,
-        backgroundPath: beatmap.backgroundPath
-      }))
-    );
+    try {
+      await saveBeatmapSet(
+        database,
+        {
+          id: manifest.archiveId,
+          title: firstBeatmap.parsed.metadata.title,
+          artist: firstBeatmap.parsed.metadata.artist,
+          creator: firstBeatmap.parsed.metadata.creator,
+          importedAt: Date.now()
+        },
+        manifest.beatmaps.map((beatmap) => ({
+          id: beatmap.normalizedPath,
+          setId: manifest.archiveId,
+          version: beatmap.parsed.metadata.version,
+          objectCount: beatmap.parsed.hitObjects.length,
+          audioPath: beatmap.audioPath,
+          backgroundPath: beatmap.backgroundPath
+        }))
+      );
+    } finally {
+      database.close();
+    }
   } catch (error) {
     state.errors.push(`Library persistence failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
 const setupAudio = async (): Promise<void> => {
-  await teardownAudio();
-
   if (!state.manifest || !state.selected?.audioPath) {
+    await teardownAudio();
+    return;
+  }
+
+  if (audioEngine && audioManifest === state.manifest && audioPath === state.selected.audioPath) {
+    audioEngine.setPlaybackRate(state.prepared?.timeRate ?? 1);
+    audioEngine.setPreservePitch(!activeMods.has('NC'));
     return;
   }
 
   const audioBytes = state.manifest.entryBytes[state.selected.audioPath];
   if (!audioBytes) {
+    await teardownAudio();
     state.errors.push(`Audio file not found: ${state.selected.audioPath}`);
     return;
   }
 
   try {
-    audioEngine = new WebAudioEngine();
+    audioEngine ??= new WebAudioEngine();
     const audioCopy = new Uint8Array(audioBytes.byteLength);
     audioCopy.set(audioBytes);
-    audioObjectUrl = URL.createObjectURL(new Blob([audioCopy], { type: mimeTypeForPath(state.selected.audioPath) }));
-    const audioElement = new Audio(audioObjectUrl);
+    const nextAudioUrl = URL.createObjectURL(
+      new Blob([audioCopy], {
+        type: mimeTypeForPath(state.selected.audioPath)
+      })
+    );
+    const audioElement = new Audio(nextAudioUrl);
     audioElement.preload = 'auto';
-    await waitForMediaReady(audioElement);
-    audioEngine.setMediaElement(audioElement);
+    try {
+      await waitForMediaReady(audioElement);
+      audioEngine.setMediaElement(audioElement);
+    } catch (error) {
+      audioElement.pause();
+      audioElement.removeAttribute('src');
+      audioElement.load();
+      URL.revokeObjectURL(nextAudioUrl);
+      throw error;
+    }
+    if (audioObjectUrl) URL.revokeObjectURL(audioObjectUrl);
+    audioObjectUrl = nextAudioUrl;
+    audioManifest = state.manifest;
+    audioPath = state.selected.audioPath;
     audioEngine.setPlaybackRate(state.prepared?.timeRate ?? 1);
     audioEngine.setPreservePitch(!activeMods.has('NC'));
   } catch (error) {
-    if (audioObjectUrl) {
-      URL.revokeObjectURL(audioObjectUrl);
-      audioObjectUrl = null;
-    }
+    await teardownAudio();
     state.errors.push(`Audio unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
 const teardownAudio = async (): Promise<void> => {
+  audioManifest = null;
+  audioPath = null;
   if (!audioEngine) {
     return;
   }
 
   const oldEngine = audioEngine;
   audioEngine = null;
-  await oldEngine.destroy();
-  if (audioObjectUrl) {
-    URL.revokeObjectURL(audioObjectUrl);
-    audioObjectUrl = null;
+  try {
+    await oldEngine.destroy();
+  } finally {
+    if (audioObjectUrl) {
+      URL.revokeObjectURL(audioObjectUrl);
+      audioObjectUrl = null;
+    }
   }
 };
 
@@ -784,7 +880,7 @@ const waitForMediaReady = (media: HTMLMediaElement): Promise<void> =>
   });
 
 const mountRenderer = async (): Promise<void> => {
-  if (!state.prepared) {
+  if (!state.prepared || renderer) {
     return;
   }
 
@@ -805,7 +901,6 @@ const mountRenderer = async (): Promise<void> => {
       }
       const judgements = game.handleInput(event);
       applyJudgements(judgements);
-      renderDebug(true);
     }
   });
 
@@ -834,24 +929,25 @@ const tick = (): void => {
     if (loopEnabled && state.prepared.objects.length > 0) {
       if (time > preparedEndTimeMs + 1000) {
         audioEngine?.seek(0);
-        if (isShowcaseBeatmap(state.selected)) {
+        if (isShowcaseBeatmap(state.selected, state.manifest)) {
           startShowcasePreview(0);
         }
         game.start(state.prepared);
-        scoreSavedForDifficulty = null;
+        scorePersistence.startRun();
         resetVisualState();
       }
     }
     if (
-      isShowcaseBeatmap(state.selected) &&
+      isShowcaseBeatmap(state.selected, state.manifest) &&
       showcasePreviewActive &&
       audioEngine?.getState() !== 'playing' &&
       time > preparedEndTimeMs + 1000
     ) {
       stopShowcasePreview(preparedEndTimeMs + 1000);
     }
-    void persistScoreIfComplete();
+    persistScoreIfComplete();
     const gameState = game.getState();
+    renderHud(gameState);
     const visualTimeMs = performance.now();
     renderWaitOverlay(time);
     updateSmokePuffs(time, gameState.cursor);
@@ -880,14 +976,8 @@ const applyJudgements = (judgements: readonly JudgementEvent[]): void => {
   }
 };
 
-const persistScoreIfComplete = async (): Promise<void> => {
-  if (
-    !state.prepared ||
-    !state.selected ||
-    autoplayEnabled ||
-    activeMods.size > 0 ||
-    scoreSavedForDifficulty === state.selected.normalizedPath
-  ) {
+const persistScoreIfComplete = (): void => {
+  if (!state.prepared || !state.selected || autoplayEnabled || activeMods.size > 0 || !scorePersistence.canSave) {
     return;
   }
 
@@ -896,22 +986,20 @@ const persistScoreIfComplete = async (): Promise<void> => {
     return;
   }
 
-  try {
-    const database = await openOszillatorDb();
-    const gameState = game.getState();
-    await saveLocalScore(database, {
+  const gameState = game.getState();
+  void scorePersistence
+    .saveOnce({
       id: crypto.randomUUID(),
       difficultyId: state.selected.normalizedPath,
       playedAt: Date.now(),
       score: gameState.score.score,
       accuracy: gameState.score.accuracy,
       maxCombo: gameState.score.maxCombo,
-      counts: gameState.score.counts
+      counts: { ...gameState.score.counts }
+    })
+    ?.catch((error: unknown) => {
+      state.errors.push(`Score persistence failed: ${error instanceof Error ? error.message : String(error)}`);
     });
-    scoreSavedForDifficulty = state.selected.normalizedPath;
-  } catch (error) {
-    state.errors.push(`Score persistence failed: ${error instanceof Error ? error.message : String(error)}`);
-  }
 };
 
 const syncStageVideo = (gameTimeMs: number): void => {
@@ -921,7 +1009,8 @@ const syncStageVideo = (gameTimeMs: number): void => {
   }
 
   const targetSeconds = (gameTimeMs - state.selected.parsed.events.videoOffsetMs) / 1000;
-  video.playbackRate = state.prepared?.timeRate ?? 1;
+  const rate = state.prepared?.timeRate ?? 1;
+  if (video.playbackRate !== rate) video.playbackRate = rate;
   const audioState = audioEngine?.getState() ?? 'idle';
   if (targetSeconds < 0 || audioState !== 'playing') {
     if (!video.paused) {
@@ -933,9 +1022,7 @@ const syncStageVideo = (gameTimeMs: number): void => {
     return;
   }
 
-  const clampedTarget = Number.isFinite(video.duration)
-    ? Math.min(Math.max(targetSeconds, 0), video.duration)
-    : Math.max(targetSeconds, 0);
+  const clampedTarget = Number.isFinite(video.duration) ? Math.min(Math.max(targetSeconds, 0), video.duration) : Math.max(targetSeconds, 0);
   if (Math.abs(video.currentTime - clampedTarget) > 0.08) {
     video.currentTime = clampedTarget;
   }
@@ -1222,7 +1309,7 @@ const updateCursorTrail = (visualTimeMs: number, cursor: { x: number; y: number 
   }
 };
 
-const stageSize = () => ({
+const readStageSize = () => ({
   width: Math.max(stageElement.clientWidth, 320),
   height: Math.max(stageElement.clientHeight, 240),
   playfieldPadding: PLAYFIELD_PADDING_OSU,
@@ -1232,6 +1319,14 @@ const stageSize = () => ({
   insetLeft: STAGE_INSET.left,
   backgroundDim: 0.7
 });
+
+const stageSize = (): ReturnType<typeof readStageSize> => (cachedStageSize ??= readStageSize());
+const updateStageSize = (): void => {
+  cachedStageSize = readStageSize();
+  inputManager?.updateSize();
+};
+const stageResizeObserver = new ResizeObserver(updateStageSize);
+stageResizeObserver.observe(stageElement);
 
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
@@ -1253,6 +1348,9 @@ const bootShowcase = async (): Promise<void> => {
   loopButton.setAttribute('aria-pressed', 'false');
   loopButton.classList.remove('active');
   await requestSelectBeatmap(beatmap);
+  if (userImportStarted || state.manifest !== manifest || state.selected !== beatmap || !selectionReady) {
+    return;
+  }
   startShowcasePreview(0);
   audioEngine?.play(0);
   renderSidebar();
@@ -1284,13 +1382,15 @@ dropZone.addEventListener('drop', (event) => {
 
 playButton.addEventListener('click', async () => {
   const engine = audioEngine;
-  if (!engine) {
+  if (!engine || !selectionReady) {
     return;
   }
 
+  const requestId = selectionRequestId;
   await engine.unlock();
+  if (requestId !== selectionRequestId || engine !== audioEngine || !selectionReady) return;
   const audioState = engine.getState();
-  if (isShowcaseBeatmap(state.selected) && showcasePreviewActive && audioState !== 'playing') {
+  if (isShowcaseBeatmap(state.selected, state.manifest) && showcasePreviewActive && audioState !== 'playing') {
     const previewTimeMs = showcasePreviewTimeMs();
     stopShowcasePreview(previewTimeMs);
     engine.play(previewTimeMs);
@@ -1313,12 +1413,12 @@ pauseButton.addEventListener('click', () => {
 });
 seekButton.addEventListener('click', () => {
   audioEngine?.seek(0);
-  if (isShowcaseBeatmap(state.selected)) {
+  if (isShowcaseBeatmap(state.selected, state.manifest)) {
     startShowcasePreview(0);
   }
   if (state.prepared) {
     game.start(state.prepared);
-    scoreSavedForDifficulty = null;
+    scorePersistence.startRun();
     resetVisualState();
   }
   renderDebug(true);
@@ -1408,7 +1508,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-window.addEventListener('resize', () => inputManager?.updateSize());
+window.addEventListener('resize', updateStageSize);
 
 renderSidebar();
 renderDebug(true);

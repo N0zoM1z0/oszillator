@@ -181,7 +181,7 @@ export class WebAudioEngine {
     this.stopSource();
     this.pausedAtMs = 0;
     this.playbackStartBeatmapMs = 0;
-    this.state = this.buffer ? 'ready' : 'stopped';
+    this.state = this.buffer || this.mediaElement ? 'ready' : 'stopped';
   }
 
   async destroy(): Promise<void> {

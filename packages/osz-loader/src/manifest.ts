@@ -1,6 +1,6 @@
 import { parseOsu, type ParsedOsuFile } from '@oszillator/osu-parser';
 
-import { hashBytes } from './archive-hash';
+import { hashArchivePrefix } from './archive-hash';
 import { resolveArchivePath } from './asset-resolver';
 import type { ArchiveEntry } from './unzip';
 import { unzipOszArchive } from './unzip';
@@ -96,7 +96,7 @@ export const buildOszArchiveManifest = (entries: readonly ArchiveEntry[]): OszAr
     });
 
   return {
-    archiveId: hashBytes(new Uint8Array(entries.flatMap((entry) => Array.from(entry.bytes)).slice(0, 4096))),
+    archiveId: hashArchivePrefix(entries),
     files,
     beatmaps,
     assets: {

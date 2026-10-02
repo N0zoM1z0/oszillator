@@ -1,4 +1,4 @@
-import { createArchiveManifestFromArrayBuffer } from '@oszillator/osz-loader';
+import { archiveTransferBuffers, createArchiveManifestFromArrayBuffer } from '@oszillator/osz-loader';
 
 self.onmessage = (event: MessageEvent<{ type: 'import-osz'; importId: string; buffer: ArrayBuffer }>) => {
   if (event.data.type !== 'import-osz') {
@@ -8,7 +8,7 @@ self.onmessage = (event: MessageEvent<{ type: 'import-osz'; importId: string; bu
   try {
     self.postMessage({ type: 'progress', importId: event.data.importId, phase: 'unzip', value: 0.25 });
     const manifest = createArchiveManifestFromArrayBuffer(event.data.buffer);
-    self.postMessage({ type: 'manifest', importId: event.data.importId, manifest });
+    self.postMessage({ type: 'manifest', importId: event.data.importId, manifest }, archiveTransferBuffers(manifest));
   } catch (error) {
     self.postMessage({
       type: 'error',
