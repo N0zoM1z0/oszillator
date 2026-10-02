@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { objectDepthStyle, sliderVisualMetrics } from './renderer';
+import { objectDepthStyle, sliderVisualMetrics } from './visuals';
 
 describe('slider visual metrics', () => {
   it('keeps the slider head aligned with the outer track diameter', () => {

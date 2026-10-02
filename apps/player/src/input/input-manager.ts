@@ -74,13 +74,11 @@ export class InputManager {
   });
 
   private readonly refreshLastPointer = (): PointerSnapshot => {
-    this.updateSize();
     this.lastPointer = this.pointerSnapshotForScreen(this.lastPointer.screenPosition);
     return this.lastPointer;
   };
 
   private readonly pointerPosition = (event: PointerEvent) => {
-    this.updateSize();
     const rect = this.options.target.getBoundingClientRect();
     const screenPosition = vec2(event.clientX - rect.left, event.clientY - rect.top);
     this.lastPointer = this.pointerSnapshotForScreen(screenPosition);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { objectVisualColour } from './renderer';
+import { objectVisualColour } from './visuals';
 
 describe('renderer colour mode', () => {
   const palette = [

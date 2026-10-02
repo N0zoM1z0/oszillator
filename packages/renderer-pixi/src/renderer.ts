@@ -1,16 +1,30 @@
 import { Application, Container, Graphics } from 'pixi.js';
 
-import { computePlayfieldTransform, queryVisibleTimeRange } from '@oszillator/core';
+import { computePlayfieldTransform, queryVisibleTimeRange, type ScreenRect } from '@oszillator/core';
 import { getSliderPositionAtDistance } from '@oszillator/slider-geometry';
 import type { GameplayState, PreparedBeatmap, PreparedObject } from '@oszillator/ruleset-std';
 
+import { ObjectViewCache, type ObjectView } from './object-view-cache';
 import { approachCircleRadius, includeActiveLongObjectStartIndex, objectRenderAlpha } from './visibility';
+import {
+  clamp,
+  DEFAULT_COMBO_COLOURS,
+  STATIC_CURSOR_COLOUR,
+  rgbToNumber,
+  mixRgb,
+  cyclePalette,
+  easeOutCubic,
+  smoothstep,
+  JUDGED_OBJECT_FADE_MS,
+  objectVisualColour,
+  objectDepthStyle,
+  type ObjectDepthStyle,
+  type Rgb
+} from './visuals';
 
-type Rgb = readonly [number, number, number];
+export { objectVisualColour, objectDepthStyle, sliderVisualMetrics, type SliderVisualMetrics, type ObjectDepthStyle } from './visuals';
 
-export type RenderSettings = {
-  width: number;
-  height: number;
+export type RenderSettings = ScreenRect & {
   backgroundDim: number;
 };
 
@@ -38,105 +52,6 @@ export type RenderFrameInput = {
   cursorTrail?: readonly CursorTrailPoint[];
 };
 
-const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
-
-const DEFAULT_COMBO_COLOURS: readonly Rgb[] = [
-  [255, 104, 136],
-  [91, 213, 255],
-  [255, 218, 100],
-  [137, 255, 154],
-  [190, 132, 255]
-];
-const STATIC_OBJECT_COLOUR: Rgb = [56, 189, 248];
-const STATIC_CURSOR_COLOUR: Rgb = [56, 189, 248];
-
-const rgbToNumber = (rgb: Rgb): number => (rgb[0] << 16) + (rgb[1] << 8) + rgb[2];
-
-const clampColorChannel = (value: number): number => Math.min(Math.max(Math.round(value), 0), 255);
-
-const mixRgb = (from: Rgb, to: Rgb, progress: number): Rgb => [
-  clampColorChannel(from[0] + (to[0] - from[0]) * progress),
-  clampColorChannel(from[1] + (to[1] - from[1]) * progress),
-  clampColorChannel(from[2] + (to[2] - from[2]) * progress)
-];
-
-const pulseRgb = (base: Rgb, visualTimeMs: number, amount: number): Rgb => {
-  const progress = (Math.sin(visualTimeMs / 180) + 1) / 2;
-  return mixRgb(base, [255, 255, 255], progress * amount);
-};
-
-const colourAt = (palette: readonly Rgb[], index: number): Rgb => palette[Math.abs(index) % palette.length] ?? DEFAULT_COMBO_COLOURS[0]!;
-
-const cyclePalette = (palette: readonly Rgb[], visualTimeMs: number): Rgb => {
-  const cycle = visualTimeMs / 720;
-  const index = Math.floor(cycle);
-  const progress = cycle - index;
-  return mixRgb(colourAt(palette, index), colourAt(palette, index + 1), progress);
-};
-
-const easeOutCubic = (value: number): number => 1 - (1 - value) ** 3;
-const smoothstep = (value: number): number => value * value * (3 - 2 * value);
-const JUDGED_OBJECT_FADE_MS = 320;
-
-export const objectVisualColour = (
-  palette: readonly Rgb[],
-  comboIndex: number,
-  dynamicColours: boolean,
-  gameTimeMs: number
-): Rgb => {
-  if (!dynamicColours) {
-    return STATIC_OBJECT_COLOUR;
-  }
-
-  return pulseRgb(colourAt(palette, comboIndex), gameTimeMs, 0.22);
-};
-
-export type SliderVisualMetrics = {
-  outerWidth: number;
-  innerWidth: number;
-  highlightWidth: number;
-  headRadius: number;
-  markerSize: number;
-};
-
-export const sliderVisualMetrics = (radius: number): SliderVisualMetrics => {
-  const outerWidth = Math.max(10, radius * 1.88);
-
-  return {
-    outerWidth,
-    innerWidth: Math.max(6, radius * 1.22),
-    highlightWidth: Math.max(2, radius * 0.12),
-    headRadius: outerWidth / 2,
-    markerSize: outerWidth / 2
-  };
-};
-
-export type ObjectDepthStyle = {
-  alpha: number;
-  scale: number;
-  ringAlpha: number;
-  shadowAlpha: number;
-  edgeWidth: number;
-};
-
-export const objectDepthStyle = (
-  object: Pick<PreparedObject, 'startTimeMs'>,
-  gameTimeMs: number,
-  preemptMs: number
-): ObjectDepthStyle => {
-  const timeUntilHitMs = object.startTimeMs - gameTimeMs;
-  const progress = clamp(1 - timeUntilHitMs / Math.max(1, preemptMs), 0, 1);
-  const focus = smoothstep(progress);
-
-  return {
-    alpha: 1,
-    scale: 0.97 + focus * 0.03,
-    ringAlpha: 1,
-    shadowAlpha: 0.2,
-    edgeWidth: 1
-  };
-};
-
 export class PixiPlayfieldRenderer {
   private readonly app = new Application();
 
@@ -146,7 +61,17 @@ export class PixiPlayfieldRenderer {
 
   private readonly smoke = new Graphics();
 
-  private readonly objects = new Graphics();
+  private readonly objectViews = new ObjectViewCache();
+
+  private objects!: Graphics;
+
+  private currentView!: ObjectView;
+
+  private transform: ReturnType<typeof computePlayfieldTransform> | null = null;
+
+  private transformSettings: ScreenRect | null = null;
+
+  private lastPlayfieldTransform: ReturnType<typeof computePlayfieldTransform> | null = null;
 
   private readonly cursor = new Graphics();
 
@@ -175,7 +100,7 @@ export class PixiPlayfieldRenderer {
     this.height = settings.height;
     element.append(this.app.canvas);
     this.app.stage.addChild(this.root);
-    this.root.addChild(this.playfield, this.smoke, this.objects, this.cursor);
+    this.root.addChild(this.playfield, this.smoke, this.objectViews.root, this.cursor);
   }
 
   resize(settings: RenderSettings): void {
@@ -185,12 +110,13 @@ export class PixiPlayfieldRenderer {
 
     this.width = settings.width;
     this.height = settings.height;
+    this.transform = null;
     this.app.renderer.resize(settings.width, settings.height);
   }
 
   renderFrame(input: RenderFrameInput): void {
     this.resize(input.settings);
-    const transform = computePlayfieldTransform(input.settings);
+    const transform = this.transformForSettings(input.settings);
 
     this.drawPlayfield(input.settings, transform);
     const palette = this.paletteForBeatmap(input.beatmap);
@@ -198,7 +124,7 @@ export class PixiPlayfieldRenderer {
     this.smoke.clear();
     this.drawSmoke(input.smokePuffs ?? [], input.gameTimeMs, transform);
 
-    this.objects.clear();
+    this.objectViews.beginFrame(input.beatmap.objects);
     const visible = queryVisibleTimeRange(
       input.beatmap.objects,
       input.gameTimeMs - 200,
@@ -211,14 +137,14 @@ export class PixiPlayfieldRenderer {
       const renderState = input.gameplayState.objects[index];
       if (object) {
         const judgedAgeMs =
-          renderState?.status === 'judged' && typeof renderState.judgedAtMs === 'number'
-            ? input.gameTimeMs - renderState.judgedAtMs
-            : null;
+          renderState?.status === 'judged' && typeof renderState.judgedAtMs === 'number' ? input.gameTimeMs - renderState.judgedAtMs : null;
         if (judgedAgeMs !== null && judgedAgeMs >= JUDGED_OBJECT_FADE_MS) {
           continue;
         }
         const judgedProgress = judgedAgeMs === null ? 0 : clamp(judgedAgeMs / JUDGED_OBJECT_FADE_MS, 0, 1);
         const judgedFadeAlpha = judgedAgeMs === null ? 1 : 1 - smoothstep(judgedProgress);
+        this.currentView = this.objectViews.activate(object, index);
+        this.objects = this.currentView.dynamic;
         this.drawObject(
           object,
           input.gameTimeMs,
@@ -233,6 +159,7 @@ export class PixiPlayfieldRenderer {
         );
       }
     }
+    this.objectViews.endFrame();
 
     this.cursor.clear();
     this.drawCursorTrail(input.cursorTrail ?? [], input.visualTimeMs, transform, palette, input.dynamicColours);
@@ -240,7 +167,8 @@ export class PixiPlayfieldRenderer {
   }
 
   destroy(): void {
-    this.app.destroy(true);
+    this.objectViews.clear();
+    this.app.destroy(true, { children: true });
   }
 
   private drawObject(
@@ -334,17 +262,7 @@ export class PixiPlayfieldRenderer {
     colour: Rgb,
     depthStyle: ObjectDepthStyle
   ): void {
-    const points = object.trackPoints;
-    const visualMetrics = sliderVisualMetrics(radius);
-
-    if (points.length > 1) {
-      const deep = rgbToNumber(mixRgb(colour, [10, 16, 26], 0.72));
-      const base = rgbToNumber(colour);
-      const soft = rgbToNumber(mixRgb(colour, [255, 255, 255], 0.5));
-      this.drawSliderPath(points, transform, visualMetrics.outerWidth, deep, alpha * 0.88);
-      this.drawSliderPath(points, transform, visualMetrics.innerWidth, base, alpha * 0.58);
-      this.drawSliderPath(points, transform, visualMetrics.highlightWidth, soft, alpha * 0.76 * depthStyle.ringAlpha);
-    }
+    const visualMetrics = this.currentView.track.update(object, transform, radius, colour, alpha, depthStyle.ringAlpha);
 
     const headX = transform.offsetX + object.position.x * transform.scale;
     const headY = transform.offsetY + object.position.y * transform.scale;
@@ -353,23 +271,16 @@ export class PixiPlayfieldRenderer {
       const checkpointX = transform.offsetX + checkpoint.position.x * transform.scale;
       const checkpointY = transform.offsetY + checkpoint.position.y * transform.scale;
       if (checkpoint.kind === 'tick') {
-        this.objects.circle(checkpointX, checkpointY, Math.max(3, radius * 0.16)).fill({ color: rgbToNumber(mixRgb(colour, [255, 255, 255], 0.62)), alpha: alpha * 0.75 });
+        this.objects
+          .circle(checkpointX, checkpointY, Math.max(3, radius * 0.16))
+          .fill({ color: rgbToNumber(mixRgb(colour, [255, 255, 255], 0.62)), alpha: alpha * 0.75 });
       }
       if (checkpoint.kind === 'repeat') {
         this.drawRepeatMarker(checkpointX, checkpointY, visualMetrics.markerSize * 0.62, alpha);
       }
     }
 
-    this.drawHitCircle(
-      headX,
-      headY,
-      visualMetrics.headRadius,
-      alpha,
-      approachRadius,
-      colour,
-      0,
-      depthStyle
-    );
+    this.drawHitCircle(headX, headY, visualMetrics.headRadius, alpha, approachRadius, colour, 0, depthStyle);
 
     if (gameTimeMs >= object.startTimeMs && gameTimeMs <= object.endTimeMs && object.spanDurationMs > 0 && object.pixelLength > 0) {
       const elapsed = clamp(gameTimeMs - object.startTimeMs, 0, object.endTimeMs - object.startTimeMs);
@@ -449,26 +360,6 @@ export class PixiPlayfieldRenderer {
     this.objects.circle(positionX, positionY, radius * 1.04).fill({ color: base, alpha: ringAlpha * (0.54 + activeProgress * 0.24) });
     this.objects.circle(positionX, positionY, radius * 0.46).fill({ color: soft, alpha: ringAlpha * 0.76 });
     this.objects.circle(positionX, positionY, radius * 1.3).stroke({ color: 0xf8fafc, alpha: ringAlpha * 0.8, width: Math.max(2, radius * 0.05) });
-  }
-
-  private drawSliderPath(
-    points: readonly { x: number; y: number }[],
-    transform: ReturnType<typeof computePlayfieldTransform>,
-    width: number,
-    color: number,
-    alpha: number
-  ): void {
-    const first = points[0];
-    if (!first) {
-      return;
-    }
-
-    this.objects.moveTo(transform.offsetX + first.x * transform.scale, transform.offsetY + first.y * transform.scale);
-    for (let index = 1; index < points.length; index += 1) {
-      const point = points[index]!;
-      this.objects.lineTo(transform.offsetX + point.x * transform.scale, transform.offsetY + point.y * transform.scale);
-    }
-    this.objects.stroke({ color, alpha, width, cap: 'round', join: 'round' });
   }
 
   private drawRepeatMarker(positionX: number, positionY: number, size: number, alpha: number): void {
@@ -588,10 +479,30 @@ export class PixiPlayfieldRenderer {
     return this.palette;
   }
 
+  private transformForSettings(settings: RenderSettings): ReturnType<typeof computePlayfieldTransform> {
+    const previous = this.transformSettings;
+    if (
+      !this.transform ||
+      !previous ||
+      previous.width !== settings.width ||
+      previous.height !== settings.height ||
+      previous.playfieldPadding !== settings.playfieldPadding ||
+      previous.insetTop !== settings.insetTop ||
+      previous.insetRight !== settings.insetRight ||
+      previous.insetBottom !== settings.insetBottom ||
+      previous.insetLeft !== settings.insetLeft
+    ) {
+      this.transformSettings = { ...settings };
+      this.transform = computePlayfieldTransform(settings);
+    }
+    return this.transform;
+  }
+
   private drawPlayfield(settings: RenderSettings, transform: ReturnType<typeof computePlayfieldTransform>): void {
     if (
       this.lastPlayfieldWidth === settings.width &&
       this.lastPlayfieldHeight === settings.height &&
+      this.lastPlayfieldTransform === transform &&
       this.lastBackgroundDim === settings.backgroundDim
     ) {
       return;
@@ -600,6 +511,7 @@ export class PixiPlayfieldRenderer {
     this.lastPlayfieldWidth = settings.width;
     this.lastPlayfieldHeight = settings.height;
     this.lastBackgroundDim = settings.backgroundDim;
+    this.lastPlayfieldTransform = transform;
     this.playfield.clear();
     this.playfield
       .rect(transform.outerOffsetX, transform.outerOffsetY, transform.outerWidth, transform.outerHeight)

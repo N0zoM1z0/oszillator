@@ -37,8 +37,48 @@ const SHOWCASES: readonly ShowcaseAssetSet[] = [
 
 const SHOWCASE_OSU_PATHS = new Set(SHOWCASES.map((showcase) => showcase.osuPath));
 
-export const isShowcaseBeatmap = (beatmap: BeatmapManifestEntry | null): boolean =>
-  beatmap ? SHOWCASE_OSU_PATHS.has(beatmap.normalizedPath) : false;
+export const isShowcaseBeatmap = (beatmap: BeatmapManifestEntry | null, manifest: OszArchiveManifest | null): boolean =>
+  manifest?.archiveId === 'bundled-showcases' && Boolean(beatmap && SHOWCASE_OSU_PATHS.has(beatmap.normalizedPath));
+
+const assetRequests = new WeakMap<OszArchiveManifest, Map<string, Promise<void>>>();
+
+export const ensureShowcaseAssets = async (manifest: OszArchiveManifest, beatmap: BeatmapManifestEntry): Promise<void> => {
+  if (!isShowcaseBeatmap(beatmap, manifest)) {
+    return;
+  }
+  let requests = assetRequests.get(manifest);
+  if (!requests) {
+    requests = new Map();
+    assetRequests.set(manifest, requests);
+  }
+  const pending = requests;
+  const paths = [beatmap.audioPath, beatmap.backgroundPath, beatmap.videoPath].filter((path): path is string => Boolean(path));
+  await Promise.all(
+    paths.map((path) => {
+      if (manifest.entryBytes[path]) return;
+      let request = pending.get(path);
+      if (!request) {
+        request = fetch(`${SHOWCASE_DIR}/${path}`)
+          .then(bytesFromResponse)
+          .then((bytes) => {
+            manifest.entryBytes[path] = bytes;
+            manifest.files.push({
+              path,
+              normalizedPath: path,
+              size: bytes.byteLength,
+              extension: extensionForPath(path)
+            });
+          })
+          .catch((error: unknown) => {
+            pending.delete(path);
+            throw error;
+          });
+        pending.set(path, request);
+      }
+      return request;
+    })
+  );
+};
 
 const bytesFromResponse = async (response: Response): Promise<Uint8Array> => {
   if (!response.ok) {
@@ -60,19 +100,11 @@ export const loadShowcaseManifest = async (): Promise<OszArchiveManifest> => {
   const imageCandidates: string[] = [];
   const videoCandidates: string[] = [];
 
-  for (const showcase of SHOWCASES) {
-    const paths = [showcase.osuPath, showcase.audioPath, showcase.backgroundPath, showcase.videoPath].filter((path): path is string =>
-      Boolean(path)
-    );
-    const fetched = await Promise.all(paths.map((path) => fetch(`${SHOWCASE_DIR}/${path}`).then(bytesFromResponse)));
-    paths.forEach((path, index) => {
-      entryBytes[path] = fetched[index]!;
-    });
-
-    const osuBytes = entryBytes[showcase.osuPath];
-    if (!osuBytes) {
-      throw new Error(`Showcase beatmap unavailable: ${showcase.osuPath}`);
-    }
+  const osuFiles = await Promise.all(SHOWCASES.map((showcase) => fetch(`${SHOWCASE_DIR}/${showcase.osuPath}`).then(bytesFromResponse)));
+  for (let index = 0; index < SHOWCASES.length; index += 1) {
+    const showcase = SHOWCASES[index]!;
+    const osuBytes = osuFiles[index]!;
+    entryBytes[showcase.osuPath] = osuBytes;
 
     beatmaps.push({
       filePath: showcase.osuPath,
