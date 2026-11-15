@@ -44,3 +44,22 @@ describe('renderer visibility helpers', () => {
     expect(approachCircleRadius(2000, 2000, 40, 1200)).toBe(40);
   });
 });
+
+describe('active long object lookup', () => {
+  it('matches a linear scan for every start index and cutoff', () => {
+    const objects = [object('a', 0, 500), object('spinner', 100, 5000), object('b', 200), object('c', 300, 900), object('d', 6000)];
+    const linear = (startIndex: number, cutoff: number): number => {
+      let earliest = startIndex;
+      for (let index = startIndex - 1; index >= 0; index -= 1) {
+        if (objects[index]!.endTimeMs >= cutoff) earliest = index;
+      }
+      return earliest;
+    };
+
+    for (let startIndex = 0; startIndex <= objects.length; startIndex += 1) {
+      for (const cutoff of [-1, 0, 150, 499, 500, 501, 900, 4999, 5000, 5001, 7000]) {
+        expect(includeActiveLongObjectStartIndex(objects, startIndex, cutoff)).toBe(linear(startIndex, cutoff));
+      }
+    }
+  });
+});

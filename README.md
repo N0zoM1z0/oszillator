@@ -47,24 +47,28 @@ The demo is a static GitHub Pages build of the same browser player. Import a `.o
 
 ```bash
 corepack pnpm install
-corepack pnpm dev
+corepack pnpm dev        # http://127.0.0.1:5173
 corepack pnpm typecheck
-corepack pnpm test
-corepack pnpm build
-corepack pnpm test:e2e
+corepack pnpm lint
+corepack pnpm test       # unit tests
+corepack pnpm build      # static player build in apps/player/dist
+corepack pnpm test:e2e   # builds, then runs Playwright
+corepack pnpm format
 ```
+
+See [docs/architecture.md](docs/architecture.md), [docs/testing.md](docs/testing.md) and [docs/known-deviations.md](docs/known-deviations.md).
 
 ## Workspace
 
 - `apps/player`: Vite browser app and UI orchestration.
 - `packages/audio-engine`: Web Audio clock, playback, offsets, and hitsounds.
-- `packages/core`: shared math, time, playfield transforms, search, and input primitives.
+- `packages/core`: shared vector math, playfield transforms, search, and input types.
 - `packages/osu-parser`: warning-first `.osu` parser.
 - `packages/osz-loader`: `.osz` unzip and manifest generation.
 - `packages/renderer-pixi`: Pixi gameplay renderer.
-- `packages/ruleset-std`: osu!standard preparation, modifiers, judgement, and scoring.
+- `packages/ruleset-std`: osu!standard preparation, modifiers, judgement, scoring, and autoplay.
 - `packages/slider-geometry`: deterministic slider path helpers.
-- `packages/storage`: local metadata, settings, and scores.
+- `packages/storage`: local library metadata and scores (IndexedDB).
 
 ## Media
 

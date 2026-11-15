@@ -5,14 +5,15 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
-  },
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean"
+    ".": "./src/index.ts",
+    "./visuals": "./src/visuals.ts"
   },
   "dependencies": {
     "@oszillator/core": "workspace:*",
-    "@oszillator/slider-geometry": "workspace:*",
+    "@oszillator/ruleset-std": "workspace:*",
     "pixi.js": "^8.11.0"
+  },
+  "devDependencies": {
+    "@oszillator/osu-parser": "workspace:*"
   }
 }

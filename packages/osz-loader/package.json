@@ -7,9 +7,6 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean"
-  },
   "dependencies": {
     "@oszillator/osu-parser": "workspace:*",
     "fflate": "^0.8.2"

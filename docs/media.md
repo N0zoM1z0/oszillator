@@ -19,6 +19,5 @@ GitHub README files do not support arbitrary embedded YouTube iframes. The most 
 
 - `docs/assets/demo-poster.jpg`: lightweight poster extracted from the local autoplay recording.
 - YouTube demo: https://www.youtube.com/watch?v=0RBsNySsgOs
-- `test-results/no-title.mp4`: local recording source, ignored by git.
 
 Avoid committing large videos unless they are intentionally versioned release assets.

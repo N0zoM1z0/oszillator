@@ -65,9 +65,7 @@ export const parseEventsSection = (lines: readonly SectionLine[], warnings: Pars
     }
 
     if (eventType === 'Storyboard') {
-      warnings.push(
-        createParseWarning('events.unsupported', `Ignoring unsupported event line: ${line.text}`, line.lineNumber)
-      );
+      warnings.push(createParseWarning('events.unsupported', `Ignoring unsupported event line: ${line.text}`, line.lineNumber));
     }
   }
 

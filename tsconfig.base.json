@@ -16,7 +16,6 @@
     "verbatimModuleSyntax": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true,
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
@@ -25,10 +24,12 @@
       "@oszillator/osu-parser": ["packages/osu-parser/src/index.ts"],
       "@oszillator/osz-loader": ["packages/osz-loader/src/index.ts"],
       "@oszillator/renderer-pixi": ["packages/renderer-pixi/src/index.ts"],
+      "@oszillator/renderer-pixi/visuals": ["packages/renderer-pixi/src/visuals.ts"],
       "@oszillator/ruleset-std": ["packages/ruleset-std/src/index.ts"],
       "@oszillator/slider-geometry": ["packages/slider-geometry/src/index.ts"],
       "@oszillator/storage": ["packages/storage/src/index.ts"]
     }
   },
-  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "tests/**/*.ts", "playwright.config.ts", "eslint.config.js"]
+  "include": ["apps/**/*.ts", "packages/**/*.ts", "playwright.config.ts", "vitest.config.ts"],
+  "exclude": ["**/node_modules", "**/dist"]
 }

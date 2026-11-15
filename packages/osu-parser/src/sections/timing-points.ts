@@ -13,27 +13,20 @@ export type TimingPointRaw = {
   lineNumber: number;
 };
 
-export const parseTimingPointsSection = (
-  lines: readonly SectionLine[],
-  warnings: ParseWarning[]
-): TimingPointRaw[] => {
+export const parseTimingPointsSection = (lines: readonly SectionLine[], warnings: ParseWarning[]): TimingPointRaw[] => {
   const timingPoints: TimingPointRaw[] = [];
 
   for (const line of lines) {
     const parts = line.text.split(',').map((part) => part.trim());
     if (parts.length < 2) {
-      warnings.push(
-        createParseWarning('timing-points.malformed-line', `Malformed TimingPoints line: ${line.text}`, line.lineNumber)
-      );
+      warnings.push(createParseWarning('timing-points.malformed-line', `Malformed TimingPoints line: ${line.text}`, line.lineNumber));
       continue;
     }
 
     const time = parseFloatNumber(parts[0] ?? '');
     const beatLength = parseFloatNumber(parts[1] ?? '');
     if (time === null || beatLength === null) {
-      warnings.push(
-        createParseWarning('timing-points.invalid-number', `Invalid TimingPoints line: ${line.text}`, line.lineNumber)
-      );
+      warnings.push(createParseWarning('timing-points.invalid-number', `Invalid TimingPoints line: ${line.text}`, line.lineNumber));
       continue;
     }
 

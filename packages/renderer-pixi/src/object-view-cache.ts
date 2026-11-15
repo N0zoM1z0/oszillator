@@ -3,7 +3,9 @@ import { Container, Graphics } from 'pixi.js';
 import type { PlayfieldTransform } from '@oszillator/core';
 import type { PreparedObject } from '@oszillator/ruleset-std';
 
-import { mixRgb, rgbToNumber, sliderVisualMetrics, type Rgb, type SliderVisualMetrics } from './visuals';
+import { mixColour, sliderVisualMetrics, WHITE, type SliderVisualMetrics } from './visuals';
+
+const TRACK_SHADOW = 0x0a101a;
 
 type PreparedSlider = Extract<PreparedObject, { kind: 'slider' }>;
 
@@ -21,14 +23,7 @@ export class SliderTrackGraphics {
     this.root.addChild(this.outer, this.inner, this.highlight);
   }
 
-  update(
-    object: PreparedSlider,
-    transform: PlayfieldTransform,
-    radius: number,
-    colour: Rgb,
-    alpha: number,
-    ringAlpha: number
-  ): SliderVisualMetrics {
+  update(object: PreparedSlider, transform: PlayfieldTransform, radius: number, colour: number, alpha: number): SliderVisualMetrics {
     if (this.object !== object || this.scale !== transform.scale || this.radius !== radius) {
       this.object = object;
       this.scale = transform.scale;
@@ -40,12 +35,12 @@ export class SliderTrackGraphics {
     }
     this.root.visible = object.trackPoints.length > 1;
     this.root.position.set(transform.offsetX, transform.offsetY);
-    this.outer.tint = rgbToNumber(mixRgb(colour, [10, 16, 26], 0.72));
+    this.outer.tint = mixColour(colour, TRACK_SHADOW, 0.72);
     this.outer.alpha = alpha * 0.88;
-    this.inner.tint = rgbToNumber(colour);
+    this.inner.tint = colour;
     this.inner.alpha = alpha * 0.58;
-    this.highlight.tint = rgbToNumber(mixRgb(colour, [255, 255, 255], 0.5));
-    this.highlight.alpha = alpha * 0.76 * ringAlpha;
+    this.highlight.tint = mixColour(colour, WHITE, 0.5);
+    this.highlight.alpha = alpha * 0.76;
     return this.metrics;
   }
 

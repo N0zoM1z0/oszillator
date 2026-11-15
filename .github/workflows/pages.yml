@@ -42,6 +42,12 @@ jobs:
       - name: Install dependencies
         run: corepack pnpm install --frozen-lockfile
 
+      - name: Check
+        run: |
+          corepack pnpm typecheck
+          corepack pnpm lint
+          corepack pnpm test
+
       - name: Build static demo
         run: GITHUB_PAGES=true corepack pnpm build
 

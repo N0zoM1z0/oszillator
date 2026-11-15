@@ -5,8 +5,8 @@ import { parseGeneralSection, type GeneralSection } from './sections/general';
 import { parseHitObjectsSection, type RawHitObject } from './sections/hit-objects';
 import { parseMetadataSection, type MetadataSection } from './sections/metadata';
 import { parseTimingPointsSection, type TimingPointRaw } from './sections/timing-points';
-import { groupSections, normalizeNewlines, stripBom, type GroupedSections } from './sections';
-import type { ParseWarning } from './warnings';
+import { groupSections, normalizeNewlines, PREAMBLE_SECTION, stripBom } from './sections';
+import { createParseWarning, type ParseWarning } from './warnings';
 
 export type ParsedOsuFile = {
   formatVersion: number;
@@ -17,9 +17,11 @@ export type ParsedOsuFile = {
   timingPoints: TimingPointRaw[];
   colours: ColoursSection;
   hitObjects: RawHitObject[];
-  rawSections: GroupedSections;
   warnings: ParseWarning[];
 };
+
+// Sections that are understood or intentionally ignored without a warning.
+const KNOWN_SECTIONS = new Set(['General', 'Editor', 'Metadata', 'Difficulty', 'Events', 'TimingPoints', 'Colours', 'HitObjects']);
 
 const parseFormatVersion = (header: string): number => {
   const match = /^osu file format v(\d+)$/i.exec(header.trim());
@@ -36,6 +38,12 @@ export const parseOsu = (text: string): ParsedOsuFile => {
   const formatVersion = parseFormatVersion(lines[0] ?? '');
   const grouped = groupSections(lines);
   const warnings = [...grouped.warnings];
+  for (const [name, sectionLines] of Object.entries(grouped.sections)) {
+    if (!KNOWN_SECTIONS.has(name) && sectionLines.length > 0) {
+      const message = name === PREAMBLE_SECTION ? 'Ignoring content before the first section' : `Ignoring unknown section [${name}]`;
+      warnings.push(createParseWarning('section.unknown', message, sectionLines[0]?.lineNumber));
+    }
+  }
 
   const general = parseGeneralSection(grouped.sections.General ?? [], warnings);
   const metadata = parseMetadataSection(grouped.sections.Metadata ?? [], warnings);
@@ -54,7 +62,6 @@ export const parseOsu = (text: string): ParsedOsuFile => {
     timingPoints,
     colours,
     hitObjects,
-    rawSections: grouped.sections,
     warnings
   };
 };

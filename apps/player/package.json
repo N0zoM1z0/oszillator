@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:e2e": "playwright test -c ../../playwright.config.ts"
+    "test:e2e": "vite build && playwright test -c ../../playwright.config.ts"
   },
   "dependencies": {
     "@oszillator/audio-engine": "workspace:*",
@@ -16,8 +16,6 @@
     "@oszillator/osz-loader": "workspace:*",
     "@oszillator/renderer-pixi": "workspace:*",
     "@oszillator/ruleset-std": "workspace:*",
-    "@oszillator/slider-geometry": "workspace:*",
-    "@oszillator/storage": "workspace:*",
-    "pixi.js": "^8.11.0"
+    "@oszillator/storage": "workspace:*"
   }
 }

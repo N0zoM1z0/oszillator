@@ -3,10 +3,11 @@ import { createParseWarning, type ParseWarning } from './warnings';
 export type SectionLine = {
   lineNumber: number;
   text: string;
-  raw: string;
 };
 
 export type GroupedSections = Record<string, SectionLine[]>;
+
+export const PREAMBLE_SECTION = '__preamble';
 
 export const stripBom = (text: string): string => text.replace(/^\uFEFF/, '');
 
@@ -15,13 +16,12 @@ export const normalizeNewlines = (text: string): string => text.replace(/\r\n?/g
 export const groupSections = (lines: readonly string[]): { sections: GroupedSections; warnings: ParseWarning[] } => {
   const sections: GroupedSections = {};
   const warnings: ParseWarning[] = [];
-  let currentSection = '__preamble';
+  let currentSection = PREAMBLE_SECTION;
 
   sections[currentSection] = [];
 
   for (let index = 1; index < lines.length; index += 1) {
-    const raw = lines[index] as string;
-    const text = raw.trim();
+    const text = lines[index]!.trim();
 
     if (text === '' || text.startsWith('//')) {
       continue;
@@ -40,11 +40,7 @@ export const groupSections = (lines: readonly string[]): { sections: GroupedSect
     }
 
     const sectionLines = (sections[currentSection] ??= []);
-    sectionLines.push({
-      lineNumber: index + 1,
-      raw,
-      text
-    });
+    sectionLines.push({ lineNumber: index + 1, text });
   }
 
   return { sections, warnings };

@@ -1,10 +1,10 @@
 import type { Vec2 } from '@oszillator/core';
-import { PLAYFIELD_HEIGHT, vec2 } from '@oszillator/core';
+import { PLAYFIELD_CENTER, PLAYFIELD_HEIGHT, vec2 } from '@oszillator/core';
 import type { DifficultySection, ParsedOsuFile, RawCircle, RawHitObject, RawSlider, RawSpinner } from '@oszillator/osu-parser';
 import { buildSliderPath, getSliderPolylineUntilDistance, getSliderPositionAtDistance, type SliderPath } from '@oszillator/slider-geometry';
 
 import { buildControlPoints, getActiveControlPoint, type ControlPoint } from './control-points';
-import { deriveDifficulty, type DerivedDifficulty } from './difficulty';
+import { clampDifficulty, deriveDifficulty, type DerivedDifficulty } from './difficulty';
 import { gameplayModTimeRate, type GameplayMod, type PrepareBeatmapOptions } from './mods';
 
 export type SliderCheckpoint = {
@@ -92,7 +92,7 @@ const createSliderCheckpoints = (
   const velocity = 100 * derivedDifficulty.sliderMultiplier * controlPoint.sliderVelocityMultiplier;
   const spanDurationMs = raw.pixelLength <= 0 ? 0 : (raw.pixelLength / velocity) * controlPoint.beatLength;
   const checkpoints: SliderCheckpoint[] = [];
-  const tickDistance = velocity * (controlPoint.beatLength / 1000) / Math.max(derivedDifficulty.sliderTickRate, 1);
+  const tickDistance = (velocity * (controlPoint.beatLength / 1000)) / Math.max(derivedDifficulty.sliderTickRate, 1);
 
   for (let repeatIndex = 0; repeatIndex < raw.repeatCount; repeatIndex += 1) {
     const reverse = repeatIndex % 2 === 1;
@@ -112,7 +112,8 @@ const createSliderCheckpoints = (
 
     const endpointDistance = reverse ? 0 : raw.pixelLength;
     checkpoints.push({
-      time: raw.time + spanOffset + spanDurationMs,
+      // Same expression as the slider's endTimeMs so the tail lands exactly on it.
+      time: raw.time + spanDurationMs * (repeatIndex + 1),
       position: getSliderPositionAtDistance(path, endpointDistance),
       kind: repeatIndex === raw.repeatCount - 1 ? 'tail' : 'repeat'
     });
@@ -159,13 +160,11 @@ const prepareSpinner = (raw: RawSpinner, radius: number, comboIndex: number): Pr
   kind: 'spinner',
   startTimeMs: raw.time,
   endTimeMs: raw.endTime,
-  position: vec2(256, 192),
+  position: PLAYFIELD_CENTER,
   radius,
   newCombo: raw.newCombo,
   comboIndex
 });
-
-const clampDifficulty = (value: number): number => Math.min(Math.max(value, 0), 10);
 
 const applyHardRockDifficulty = (difficulty: DifficultySection): DifficultySection => ({
   ...difficulty,

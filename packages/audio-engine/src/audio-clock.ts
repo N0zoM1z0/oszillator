@@ -1,5 +1,3 @@
-import type { AudioOffsetSettings } from './offset';
-
 export type AudioClockSnapshot = {
   contextTimeSeconds: number;
   playbackStartContextTimeSeconds: number;
@@ -7,10 +5,7 @@ export type AudioClockSnapshot = {
   playbackRate?: number;
 };
 
-export const mapAudioContextTimeToGameTimeMs = (
-  snapshot: AudioClockSnapshot,
-  offsets: AudioOffsetSettings
-): number =>
+/** Maps AudioContext time to beatmap time, scaled by the playback rate. */
+export const mapAudioContextTimeToGameTimeMs = (snapshot: AudioClockSnapshot): number =>
   snapshot.playbackStartBeatmapMs +
-  (snapshot.contextTimeSeconds - snapshot.playbackStartContextTimeSeconds) * 1000 * (snapshot.playbackRate ?? 1) +
-  offsets.globalOffsetMs;
+  (snapshot.contextTimeSeconds - snapshot.playbackStartContextTimeSeconds) * 1000 * (snapshot.playbackRate ?? 1);

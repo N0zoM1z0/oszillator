@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { computePlayfieldTransform } from '@oszillator/core';
-import { parseOsu } from '../../osu-parser/src/index';
-import { prepareBeatmap } from '../../ruleset-std/src/index';
+import { parseOsu } from '@oszillator/osu-parser';
+import { prepareBeatmap } from '@oszillator/ruleset-std';
 
 import { ObjectViewCache, SliderTrackGraphics } from './object-view-cache';
 import { sliderVisualMetrics } from './visuals';
@@ -92,7 +92,7 @@ describe('cached slider geometry', () => {
   it('preserves all three track paths and only retints/refades during subsequent frames', () => {
     const track = new SliderTrackGraphics();
     const radius = slider.radius * transform.scale;
-    const metrics = track.update(slider, transform, radius, [56, 189, 248], 1, 1);
+    const metrics = track.update(slider, transform, radius, 0x38bdf8, 1);
     expect(metrics).toEqual(sliderVisualMetrics(radius));
     expect(probe.strokes.map((stroke) => stroke.width)).toEqual([metrics.outerWidth, metrics.innerWidth, metrics.highlightWidth]);
     for (const stroke of probe.strokes) {
@@ -100,7 +100,7 @@ describe('cached slider geometry', () => {
       expect(stroke.color).toBe(0xffffff);
     }
     for (let frame = 0; frame < 120; frame += 1) {
-      track.update(slider, { ...transform, offsetX: frame }, radius, [255, 0, 0], 0.5, 1);
+      track.update(slider, { ...transform, offsetX: frame }, radius, 0xff0000, 0.5);
     }
     expect(probe.strokes).toHaveLength(3);
     expect(track.root.position.set).toHaveBeenLastCalledWith(119, transform.offsetY);
@@ -110,14 +110,14 @@ describe('cached slider geometry', () => {
 
   it('invalidates on scale, radius, object identity and explicit resource release', () => {
     const track = new SliderTrackGraphics();
-    track.update(slider, transform, 20, [0, 0, 255], 1, 1);
-    track.update(slider, { ...transform, scale: 0.01 }, 0.2, [0, 0, 255], 1, 1);
+    track.update(slider, transform, 20, 0x0000ff, 1);
+    track.update(slider, { ...transform, scale: 0.01 }, 0.2, 0x0000ff, 1);
     expect(probe.strokes[3]?.width).toBe(10); // Preserve the minimum screen-space track width.
-    track.update(slider, { ...transform, scale: 0.01 }, 30, [0, 0, 255], 1, 1);
-    track.update({ ...slider }, transform, 20, [0, 0, 255], 1, 1);
+    track.update(slider, { ...transform, scale: 0.01 }, 30, 0x0000ff, 1);
+    track.update({ ...slider }, transform, 20, 0x0000ff, 1);
     track.clear();
     expect(track.root.visible).toBe(false);
-    track.update(slider, transform, 20, [0, 0, 255], 1, 1);
+    track.update(slider, transform, 20, 0x0000ff, 1);
     expect(probe.strokes).toHaveLength(15);
     track.root.destroy({ children: true });
     expect(probe.destroyed).toBe(3);

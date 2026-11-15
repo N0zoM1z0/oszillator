@@ -167,9 +167,7 @@ export const parseHitObjectsSection = (lines: readonly SectionLine[], warnings: 
 
     const unsupportedKind = (typeFlags & 128) !== 0 ? 'hold' : 'unknown';
     base.hitSample = parseHitSample(parts[parts.length - 1]);
-    warnings.push(
-      createParseWarning('hitobjects.unsupported-kind', `Unsupported hit object kind: ${line.text}`, line.lineNumber)
-    );
+    warnings.push(createParseWarning('hitobjects.unsupported-kind', `Unsupported hit object kind: ${line.text}`, line.lineNumber));
     objects.push({
       ...base,
       kind: 'unsupported',

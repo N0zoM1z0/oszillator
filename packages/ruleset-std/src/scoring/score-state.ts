@@ -35,11 +35,7 @@ export const applyHitResult = (state: ScoreState, result: HitResult): ScoreState
     [result]: state.counts[result] + 1
   };
   const totalObjects = Object.values(nextCounts).reduce((sum, count) => sum + count, 0);
-  const earned =
-    nextCounts.great * 300 +
-    nextCounts.ok * 100 +
-    nextCounts.meh * 50 +
-    nextCounts.miss * 0;
+  const earned = nextCounts.great * 300 + nextCounts.ok * 100 + nextCounts.meh * 50 + nextCounts.miss * 0;
   const accuracy = totalObjects === 0 ? 1 : earned / (totalObjects * 300);
 
   return {
