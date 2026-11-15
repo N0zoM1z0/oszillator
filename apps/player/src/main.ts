@@ -1,12 +1,6 @@
 import type { BeatmapManifestEntry, OszArchiveManifest } from '@oszillator/osz-loader';
 import { PixiPlayfieldRenderer } from '@oszillator/renderer-pixi';
-import {
-  AutoplayDriver,
-  RulesetStdGame,
-  type GameplayMod,
-  type JudgementEvent,
-  type PreparedBeatmap
-} from '@oszillator/ruleset-std';
+import { AutoplayDriver, RulesetStdGame, type GameplayMod, type JudgementEvent, type PreparedBeatmap } from '@oszillator/ruleset-std';
 
 import { CursorEffects } from './cursor-effects';
 import { importOszFile } from './import-osz';

@@ -6,10 +6,7 @@ export const saveLocalScore = async (database: IDBPDatabase, score: LocalScoreRe
   await database.put('scores', score);
 };
 
-export const listScoresForDifficulty = async (
-  database: IDBPDatabase,
-  difficultyId: string
-): Promise<LocalScoreRecord[]> => {
+export const listScoresForDifficulty = async (database: IDBPDatabase, difficultyId: string): Promise<LocalScoreRecord[]> => {
   const tx = database.transaction('scores');
   const index = tx.store.index('difficultyId');
   return (await index.getAll(difficultyId)) as LocalScoreRecord[];

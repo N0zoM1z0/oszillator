@@ -39,14 +39,16 @@ Combo2 : 96,220,255
 describe('difficulty helpers', () => {
   it('matches the standard range formula', () => {
     expect(difficultyRange(7, 1800, 1200, 450)).toBe(900);
-    expect(deriveDifficulty({
-      circleSize: 4,
-      overallDifficulty: 6,
-      approachRate: 7,
-      hpDrainRate: 5,
-      sliderMultiplier: 1.4,
-      sliderTickRate: 1
-    }).circleRadius).toBeCloseTo(36.48);
+    expect(
+      deriveDifficulty({
+        circleSize: 4,
+        overallDifficulty: 6,
+        approachRate: 7,
+        hpDrainRate: 5,
+        sliderMultiplier: 1.4,
+        sliderTickRate: 1
+      }).circleRadius
+    ).toBeCloseTo(36.48);
   });
 
   it('uses double-time speed for DT and NC mods', () => {

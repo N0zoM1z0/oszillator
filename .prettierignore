@@ -1,0 +1,5 @@
+pnpm-lock.yaml
+apps/player/public/
+**/dist/
+test-results/
+playwright-report/

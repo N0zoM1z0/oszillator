@@ -1,16 +1,15 @@
 export const normalizeArchivePath = (value: string): string =>
-  value.replaceAll('\\', '/').replace(/^\.?\//, '').trim();
+  value
+    .replaceAll('\\', '/')
+    .replace(/^\.?\//, '')
+    .trim();
 
 const dirname = (path: string): string => {
   const index = path.lastIndexOf('/');
   return index === -1 ? '' : path.slice(0, index + 1);
 };
 
-export const resolveArchivePath = (
-  paths: readonly string[],
-  target: string | null | undefined,
-  basePath?: string
-): string | null => {
+export const resolveArchivePath = (paths: readonly string[], target: string | null | undefined, basePath?: string): string | null => {
   if (!target) {
     return null;
   }

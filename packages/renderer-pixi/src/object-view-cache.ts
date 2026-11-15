@@ -23,13 +23,7 @@ export class SliderTrackGraphics {
     this.root.addChild(this.outer, this.inner, this.highlight);
   }
 
-  update(
-    object: PreparedSlider,
-    transform: PlayfieldTransform,
-    radius: number,
-    colour: number,
-    alpha: number
-  ): SliderVisualMetrics {
+  update(object: PreparedSlider, transform: PlayfieldTransform, radius: number, colour: number, alpha: number): SliderVisualMetrics {
     if (this.object !== object || this.scale !== transform.scale || this.radius !== radius) {
       this.object = object;
       this.scale = transform.scale;

@@ -92,7 +92,7 @@ const createSliderCheckpoints = (
   const velocity = 100 * derivedDifficulty.sliderMultiplier * controlPoint.sliderVelocityMultiplier;
   const spanDurationMs = raw.pixelLength <= 0 ? 0 : (raw.pixelLength / velocity) * controlPoint.beatLength;
   const checkpoints: SliderCheckpoint[] = [];
-  const tickDistance = velocity * (controlPoint.beatLength / 1000) / Math.max(derivedDifficulty.sliderTickRate, 1);
+  const tickDistance = (velocity * (controlPoint.beatLength / 1000)) / Math.max(derivedDifficulty.sliderTickRate, 1);
 
   for (let repeatIndex = 0; repeatIndex < raw.repeatCount; repeatIndex += 1) {
     const reverse = repeatIndex % 2 === 1;

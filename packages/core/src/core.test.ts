@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { vec2 } from './math/vec2';
-import {
-  computePlayfieldTransform,
-  playfieldToScreen,
-  screenToPlayfield,
-  PLAYFIELD_WIDTH
-} from './playfield/playfield';
+import { computePlayfieldTransform, playfieldToScreen, screenToPlayfield, PLAYFIELD_WIDTH } from './playfield/playfield';
 import { lowerBound, queryVisibleTimeRange, upperBound } from './search/binary-search';
 
 describe('playfield transforms', () => {

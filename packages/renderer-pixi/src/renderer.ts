@@ -273,7 +273,13 @@ export class PixiPlayfieldRenderer {
     }
   }
 
-  private drawCursor(position: Vec2, visualTimeMs: number, transform: PlayfieldTransform, palette: readonly number[], dynamicColours: boolean): void {
+  private drawCursor(
+    position: Vec2,
+    visualTimeMs: number,
+    transform: PlayfieldTransform,
+    palette: readonly number[],
+    dynamicColours: boolean
+  ): void {
     const x = transform.offsetX + position.x * transform.scale;
     const y = transform.offsetY + position.y * transform.scale;
     const pulse = (Math.sin(visualTimeMs / 85) + 1) / 2;
@@ -288,7 +294,8 @@ export class PixiPlayfieldRenderer {
     // Keyed by the colours section, which mod variants of a beatmap share.
     if (this.paletteSource !== beatmap.colours) {
       this.paletteSource = beatmap.colours;
-      this.palette = beatmap.colours.combos.length > 0 ? beatmap.colours.combos.map((entry) => rgbToNumber(entry.rgb)) : DEFAULT_COMBO_COLOURS;
+      this.palette =
+        beatmap.colours.combos.length > 0 ? beatmap.colours.combos.map((entry) => rgbToNumber(entry.rgb)) : DEFAULT_COMBO_COLOURS;
     }
     return this.palette;
   }

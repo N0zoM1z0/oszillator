@@ -12,8 +12,7 @@ export const DEFAULT_COMBO_COLOURS: readonly number[] = [0xff6888, 0x5bd5ff, 0xf
 export const STATIC_OBJECT_COLOUR = 0x38bdf8;
 export const STATIC_CURSOR_COLOUR = 0x38bdf8;
 
-const mixChannel = (from: number, to: number, progress: number): number =>
-  clamp(Math.round(from + (to - from) * progress), 0, 255);
+const mixChannel = (from: number, to: number, progress: number): number => clamp(Math.round(from + (to - from) * progress), 0, 255);
 
 /** Linear blend between two packed colours, rounding each channel. */
 export const mixColour = (from: number, to: number, progress: number): number =>

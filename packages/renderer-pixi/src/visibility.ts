@@ -25,11 +25,7 @@ const maxEndTimesFor = (objects: readonly PreparedObject[]): Float64Array => {
  * index before `startIndex` whose object ends at or after `cutoffTimeMs`
  * (or `startIndex` if there is none), in O(log n).
  */
-export const includeActiveLongObjectStartIndex = (
-  objects: readonly PreparedObject[],
-  startIndex: number,
-  cutoffTimeMs: number
-): number => {
+export const includeActiveLongObjectStartIndex = (objects: readonly PreparedObject[], startIndex: number, cutoffTimeMs: number): number => {
   const maxEnd = maxEndTimesFor(objects);
   let low = 0;
   let high = Math.min(startIndex, objects.length);

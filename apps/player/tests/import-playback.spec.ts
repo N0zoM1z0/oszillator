@@ -189,9 +189,7 @@ const waitingOsz = (): Buffer =>
       { name: 'audio.wav', data: createSilentWav(12) },
       {
         name: 'waiting.osu',
-        data: textEncoder.encode(
-          osuDifficulty('Waiting', 0, ['256,192,1000,1,0,0:0:0:0:', '256,192,7000,1,0,0:0:0:0:'].join('\n'))
-        )
+        data: textEncoder.encode(osuDifficulty('Waiting', 0, ['256,192,1000,1,0,0:0:0:0:', '256,192,7000,1,0,0:0:0:0:'].join('\n')))
       }
     ])
   );

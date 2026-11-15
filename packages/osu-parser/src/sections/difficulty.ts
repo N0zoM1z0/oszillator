@@ -58,12 +58,7 @@ export const parseDifficultySection = (lines: readonly SectionLine[], warnings: 
 
   if (Number.isNaN(difficulty.approachRate)) {
     difficulty.approachRate = difficulty.overallDifficulty;
-    warnings.push(
-      createParseWarning(
-        'difficulty.approach-rate-fallback',
-        'ApproachRate missing; falling back to OverallDifficulty'
-      )
-    );
+    warnings.push(createParseWarning('difficulty.approach-rate-fallback', 'ApproachRate missing; falling back to OverallDifficulty'));
   }
 
   return difficulty;

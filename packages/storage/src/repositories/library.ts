@@ -16,10 +16,7 @@ export const saveBeatmapSet = async (
 export const listBeatmapSets = async (database: IDBPDatabase): Promise<BeatmapSetRecord[]> =>
   (await database.getAll('beatmapSets')) as BeatmapSetRecord[];
 
-export const listDifficultiesForSet = async (
-  database: IDBPDatabase,
-  setId: string
-): Promise<DifficultyRecord[]> => {
+export const listDifficultiesForSet = async (database: IDBPDatabase, setId: string): Promise<DifficultyRecord[]> => {
   const tx = database.transaction('difficulties');
   return (await tx.store.index('setId').getAll(setId)) as DifficultyRecord[];
 };
