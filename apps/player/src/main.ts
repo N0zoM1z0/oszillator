@@ -8,12 +8,12 @@ import {
   type JudgementEvent,
   type PreparedBeatmap,
   type PreparedObject,
-  type ScoreState
+  type ScoreState,
+  sliderBallPositionAt
 } from '@oszillator/ruleset-std';
 import { PixiPlayfieldRenderer, type CursorTrailPoint, type SmokePuff } from '@oszillator/renderer-pixi';
 import type { OszArchiveManifest, BeatmapManifestEntry } from '@oszillator/osz-loader';
 import { openOszillatorDb, saveBeatmapSet, saveLocalScore } from '@oszillator/storage';
-import { getSliderPositionAtDistance } from '@oszillator/slider-geometry';
 
 import { InputManager } from './input/input-manager';
 import { ensureShowcaseAssets, isShowcaseBeatmap, loadShowcaseManifest } from './showcase';
@@ -1259,13 +1259,7 @@ const emitAutoplayInput = (
 
 const nextAutoplayKey = (): GameplayButton => (autoplayInputId % 2 === 0 ? 'K1' : 'K2');
 
-const sliderPositionAt = (object: Extract<PreparedObject, { kind: 'slider' }>, gameTimeMs: number): Vec2 => {
-  const elapsed = Math.min(Math.max(gameTimeMs - object.startTimeMs, 0), object.endTimeMs - object.startTimeMs);
-  const spanIndex = Math.min(object.repeatCount - 1, Math.floor(elapsed / object.spanDurationMs));
-  const spanProgress = Math.min(Math.max((elapsed - spanIndex * object.spanDurationMs) / Math.max(1, object.spanDurationMs), 0), 1);
-  const distance = spanIndex % 2 === 1 ? object.pixelLength * (1 - spanProgress) : object.pixelLength * spanProgress;
-  return getSliderPositionAtDistance(object.path, distance);
-};
+const sliderPositionAt = sliderBallPositionAt;
 
 const spinnerAutoplayPosition = (gameTimeMs: number): Vec2 => {
   const angle = (gameTimeMs / 1000) * Math.PI * 12;

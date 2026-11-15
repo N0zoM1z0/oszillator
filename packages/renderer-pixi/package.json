@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@oszillator/core": "workspace:*",
-    "@oszillator/slider-geometry": "workspace:*",
+    "@oszillator/ruleset-std": "workspace:*",
     "pixi.js": "^8.11.0"
   }
 }

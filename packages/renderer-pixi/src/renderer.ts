@@ -1,8 +1,7 @@
 import { Application, Container, Graphics } from 'pixi.js';
 
 import { computePlayfieldTransform, queryVisibleTimeRange, type ScreenRect } from '@oszillator/core';
-import { getSliderPositionAtDistance } from '@oszillator/slider-geometry';
-import type { GameplayState, PreparedBeatmap, PreparedObject } from '@oszillator/ruleset-std';
+import { sliderBallPositionAt, type GameplayState, type PreparedBeatmap, type PreparedObject } from '@oszillator/ruleset-std';
 
 import { ObjectViewCache, type ObjectView } from './object-view-cache';
 import { approachCircleRadius, includeActiveLongObjectStartIndex, objectRenderAlpha } from './visibility';
@@ -283,11 +282,7 @@ export class PixiPlayfieldRenderer {
     this.drawHitCircle(headX, headY, visualMetrics.headRadius, alpha, approachRadius, colour, 0, depthStyle);
 
     if (gameTimeMs >= object.startTimeMs && gameTimeMs <= object.endTimeMs && object.spanDurationMs > 0 && object.pixelLength > 0) {
-      const elapsed = clamp(gameTimeMs - object.startTimeMs, 0, object.endTimeMs - object.startTimeMs);
-      const spanIndex = Math.min(object.repeatCount - 1, Math.floor(elapsed / object.spanDurationMs));
-      const spanProgress = clamp((elapsed - spanIndex * object.spanDurationMs) / object.spanDurationMs, 0, 1);
-      const distance = spanIndex % 2 === 1 ? object.pixelLength * (1 - spanProgress) : object.pixelLength * spanProgress;
-      const ball = getSliderPositionAtDistance(object.path, distance);
+      const ball = sliderBallPositionAt(object, gameTimeMs);
       const ballX = transform.offsetX + ball.x * transform.scale;
       const ballY = transform.offsetY + ball.y * transform.scale;
       this.objects.circle(ballX, ballY, radius * 0.72).fill({ color: rgbToNumber(mixRgb(colour, [255, 255, 255], 0.25)), alpha: 0.92 });

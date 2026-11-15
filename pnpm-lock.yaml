@@ -59,9 +59,6 @@ importers:
       '@oszillator/ruleset-std':
         specifier: workspace:*
         version: link:../../packages/ruleset-std
-      '@oszillator/slider-geometry':
-        specifier: workspace:*
-        version: link:../../packages/slider-geometry
       '@oszillator/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -94,9 +91,9 @@ importers:
       '@oszillator/core':
         specifier: workspace:*
         version: link:../core
-      '@oszillator/slider-geometry':
+      '@oszillator/ruleset-std':
         specifier: workspace:*
-        version: link:../slider-geometry
+        version: link:../ruleset-std
       pixi.js:
         specifier: ^8.11.0
         version: 8.18.1

@@ -16,7 +16,6 @@
     "@oszillator/osz-loader": "workspace:*",
     "@oszillator/renderer-pixi": "workspace:*",
     "@oszillator/ruleset-std": "workspace:*",
-    "@oszillator/slider-geometry": "workspace:*",
     "@oszillator/storage": "workspace:*"
   }
 }

@@ -7,6 +7,7 @@ import { deriveDifficulty, difficultyRange } from './difficulty';
 import { RulesetStdGame } from './judgement/game';
 import { gameplayModTimeRate } from './mods';
 import { prepareBeatmap } from './prepare';
+import { sliderBallPositionAt } from './slider-position';
 
 const osuText = `osu file format v14
 [General]
@@ -236,5 +237,28 @@ SliderTickRate: 1
 
     expect(slider.trackPoints.at(-1)).toEqual({ x: 150, y: 0 });
     expect(slider.checkpoints.at(-1)?.position).toEqual({ x: 150, y: 0 });
+  });
+});
+
+describe('sliderBallPositionAt', () => {
+  it('follows the path forward and back across repeats and clamps outside the slider lifetime', () => {
+    const parsed = parseOsu(`osu file format v14
+[Difficulty]
+SliderMultiplier: 1
+SliderTickRate: 1
+[TimingPoints]
+0,1000,4,2,0,60,1,0
+[HitObjects]
+0,0,1000,2,0,L|100:0,2,100
+`);
+    const slider = prepareBeatmap(parsed).objects[0];
+    if (slider?.kind !== 'slider') throw new Error('Expected slider');
+
+    expect(slider.spanDurationMs).toBe(1000);
+    expect(sliderBallPositionAt(slider, 500)).toEqual({ x: 0, y: 0 });
+    expect(sliderBallPositionAt(slider, 1500)).toEqual({ x: 50, y: 0 });
+    expect(sliderBallPositionAt(slider, 2000)).toEqual({ x: 100, y: 0 });
+    expect(sliderBallPositionAt(slider, 2250)).toEqual({ x: 75, y: 0 });
+    expect(sliderBallPositionAt(slider, 9000)).toEqual({ x: 0, y: 0 });
   });
 });
