@@ -29,7 +29,7 @@ describe('showcase asset lifecycle', () => {
     await Promise.all([ensureShowcaseAssets(manifest, beatmap), ensureShowcaseAssets(manifest, beatmap)]);
     await ensureShowcaseAssets(manifest, beatmap);
     expect(fetch).toHaveBeenCalledTimes(6);
-    expect(manifest.files.filter((file) => file.normalizedPath === beatmap.videoPath)).toHaveLength(1);
+    expect(manifest.entryBytes[beatmap.videoPath!]).toEqual(new Uint8Array([1, 2, 3]));
   });
 
   it('never fetches showcase assets for a local archive with matching filenames', async () => {
@@ -51,6 +51,6 @@ describe('showcase asset lifecycle', () => {
     await expect(ensureShowcaseAssets(manifest, manifest.beatmaps[0]!)).rejects.toThrow('network unavailable');
     await ensureShowcaseAssets(manifest, manifest.beatmaps[0]!);
     expect(fetch).toHaveBeenCalledTimes(6);
-    expect(manifest.files.filter((file) => file.normalizedPath === 'BG.jpg')).toHaveLength(1);
+    expect(fetch.mock.calls.filter(([url]) => url.endsWith('/BG.jpg'))).toHaveLength(1);
   });
 });

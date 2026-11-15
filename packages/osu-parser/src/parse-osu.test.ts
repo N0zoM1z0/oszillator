@@ -73,7 +73,7 @@ describe('parseOsu', () => {
     expect(parsed.hitObjects).toHaveLength(3);
   });
 
-  it('preserves unknown sections and warns on malformed section headers', () => {
+  it('warns on unknown sections and malformed section headers', () => {
     const parsed = parseOsu(`osu file format v14
 [Unknown]
 Foo: Bar
@@ -82,7 +82,8 @@ Foo: Bar
 256,192,1000,1,0,0:0:0:0:
 `);
 
-    expect(parsed.rawSections.Unknown).toHaveLength(1);
+    expect(parsed.warnings).toContainEqual({ code: 'section.unknown', message: 'Ignoring unknown section [Unknown]', line: 3 });
+    expect(parsed.hitObjects).toHaveLength(1);
     expect(parsed.warnings.some((warning) => warning.code === 'section.malformed')).toBe(true);
   });
 

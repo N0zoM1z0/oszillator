@@ -1,12 +1,10 @@
 import { mapAudioContextTimeToGameTimeMs } from './audio-clock';
-import { HitsoundPlayer, type HitsoundKind } from './hitsound-player';
-import { DEFAULT_AUDIO_OFFSET_SETTINGS, type AudioOffsetSettings } from './offset';
+import { playHitsound } from './hitsound';
 
 export type AudioEngineState = 'idle' | 'ready' | 'playing' | 'paused' | 'stopped';
 
 export type AudioEngineOptions = {
   audioContext?: AudioContext;
-  offsets?: AudioOffsetSettings;
 };
 
 type PitchPreservingMediaElement = HTMLMediaElement & {
@@ -15,18 +13,17 @@ type PitchPreservingMediaElement = HTMLMediaElement & {
   webkitPreservesPitch?: boolean;
 };
 
+/**
+ * Plays beatmap audio through an HTMLMediaElement routed into Web Audio.
+ *
+ * The AudioContext clock is the authoritative gameplay time source: game time
+ * is derived from `context.currentTime` since playback started, never from
+ * animation frame deltas or `media.currentTime`.
+ */
 export class WebAudioEngine {
   private readonly context: AudioContext;
 
-  private readonly offsets: AudioOffsetSettings;
-
-  private readonly hitsounds: HitsoundPlayer;
-
   private readonly ownsContext: boolean;
-
-  private buffer: AudioBuffer | null = null;
-
-  private source: AudioBufferSourceNode | null = null;
 
   private mediaElement: PitchPreservingMediaElement | null = null;
 
@@ -59,8 +56,6 @@ export class WebAudioEngine {
     }
 
     this.context = options.audioContext ?? new AudioContextCtor();
-    this.offsets = options.offsets ?? DEFAULT_AUDIO_OFFSET_SETTINGS;
-    this.hitsounds = new HitsoundPlayer(this.context);
     this.ownsContext = !options.audioContext;
   }
 
@@ -70,22 +65,8 @@ export class WebAudioEngine {
     }
   }
 
-  async load(buffer: ArrayBuffer): Promise<AudioBuffer> {
-    return this.context.decodeAudioData(buffer.slice(0));
-  }
-
-  setBuffer(buffer: AudioBuffer): void {
-    this.disconnectMediaElement();
-    this.stopSource();
-    this.buffer = buffer;
-    this.state = 'ready';
-    this.pausedAtMs = 0;
-  }
-
   setMediaElement(element: HTMLMediaElement): void {
-    this.stopSource();
     this.disconnectMediaElement();
-    this.buffer = null;
     this.mediaElement = element;
     this.applyMediaPlaybackSettings();
     this.mediaSource = this.context.createMediaElementSource(element);
@@ -96,43 +77,20 @@ export class WebAudioEngine {
   }
 
   play(startTimeMs = 0): void {
-    if (this.mediaElement) {
-      this.stopSource();
-      this.mediaElement.pause();
-      this.mediaElement.currentTime = Math.max(startTimeMs, 0) / 1000;
-      this.applyMediaPlaybackSettings();
-      this.mediaElement.play().catch(() => {
-        if (this.state === 'playing') {
-          this.state = 'paused';
-          this.pausedAtMs = startTimeMs;
-        }
-      });
-      this.playbackStartContextTimeSeconds = this.context.currentTime;
-      this.playbackStartBeatmapMs = startTimeMs;
-      this.pausedAtMs = startTimeMs;
-      this.state = 'playing';
-      return;
+    const media = this.mediaElement;
+    if (!media) {
+      throw new Error('Cannot play without a media element');
     }
 
-    if (!this.buffer) {
-      throw new Error('Cannot play without an AudioBuffer');
-    }
-
-    this.stopSource();
-    const source = this.context.createBufferSource();
-    source.buffer = this.buffer;
-    source.playbackRate.value = this.playbackRate;
-    source.connect(this.context.destination);
-    source.start(0, Math.max(startTimeMs, 0) / 1000);
-    source.onended = () => {
+    media.pause();
+    media.currentTime = Math.max(startTimeMs, 0) / 1000;
+    this.applyMediaPlaybackSettings();
+    media.play().catch(() => {
       if (this.state === 'playing') {
-        this.pausedAtMs = (this.buffer?.duration ?? 0) * 1000;
-        this.playbackStartBeatmapMs = this.pausedAtMs;
-        this.state = 'stopped';
+        this.state = 'paused';
+        this.pausedAtMs = startTimeMs;
       }
-    };
-
-    this.source = source;
+    });
     this.playbackStartContextTimeSeconds = this.context.currentTime;
     this.playbackStartBeatmapMs = startTimeMs;
     this.pausedAtMs = startTimeMs;
@@ -145,19 +103,14 @@ export class WebAudioEngine {
     }
 
     this.pausedAtMs = this.getGameTimeMs();
-    if (this.mediaElement) {
-      this.mediaElement.pause();
-    }
-    this.stopSource();
+    this.mediaElement?.pause();
     this.state = 'paused';
   }
 
   resume(): void {
-    if (this.state !== 'paused') {
-      return;
+    if (this.state === 'paused') {
+      this.play(this.pausedAtMs);
     }
-
-    this.play(this.pausedAtMs);
   }
 
   seek(timeMs: number): void {
@@ -178,17 +131,14 @@ export class WebAudioEngine {
       this.mediaElement.pause();
       this.mediaElement.currentTime = 0;
     }
-    this.stopSource();
     this.pausedAtMs = 0;
     this.playbackStartBeatmapMs = 0;
-    this.state = this.buffer || this.mediaElement ? 'ready' : 'stopped';
+    this.state = this.mediaElement ? 'ready' : 'idle';
   }
 
   async destroy(): Promise<void> {
     this.disconnectMediaElement();
-    this.stopSource();
-    this.buffer = null;
-    this.state = 'stopped';
+    this.state = 'idle';
 
     if (this.ownsContext && this.context.state !== 'closed') {
       await this.context.close();
@@ -196,19 +146,16 @@ export class WebAudioEngine {
   }
 
   getGameTimeMs(): number {
-    if (this.state === 'playing') {
-      return mapAudioContextTimeToGameTimeMs(
-        {
-          contextTimeSeconds: this.context.currentTime,
-          playbackStartBeatmapMs: this.playbackStartBeatmapMs,
-          playbackStartContextTimeSeconds: this.playbackStartContextTimeSeconds,
-          playbackRate: this.playbackRate
-        },
-        this.offsets
-      );
+    if (this.state !== 'playing') {
+      return this.pausedAtMs;
     }
 
-    return this.pausedAtMs + this.offsets.globalOffsetMs;
+    return mapAudioContextTimeToGameTimeMs({
+      contextTimeSeconds: this.context.currentTime,
+      playbackStartBeatmapMs: this.playbackStartBeatmapMs,
+      playbackStartContextTimeSeconds: this.playbackStartContextTimeSeconds,
+      playbackRate: this.playbackRate
+    });
   }
 
   getState(): AudioEngineState {
@@ -229,25 +176,13 @@ export class WebAudioEngine {
       return;
     }
 
-    const restartAtMs = this.getGameTimeMs();
+    // Re-anchor the clock so time already played keeps its old rate.
+    const anchorMs = this.getGameTimeMs();
     this.playbackRate = nextRate;
     this.applyMediaPlaybackSettings();
-    if (this.mediaElement) {
-      this.playbackStartContextTimeSeconds = this.context.currentTime;
-      this.playbackStartBeatmapMs = restartAtMs;
-      this.pausedAtMs = restartAtMs;
-      return;
-    }
-    if (this.source) {
-      this.source.playbackRate.value = nextRate;
-    }
-    if (this.state === 'playing') {
-      this.play(restartAtMs);
-      return;
-    }
-
-    this.pausedAtMs = restartAtMs;
-    this.playbackStartBeatmapMs = restartAtMs;
+    this.playbackStartContextTimeSeconds = this.context.currentTime;
+    this.playbackStartBeatmapMs = anchorMs;
+    this.pausedAtMs = anchorMs;
   }
 
   setPreservePitch(preservePitch: boolean): void {
@@ -255,19 +190,20 @@ export class WebAudioEngine {
     this.applyMediaPlaybackSettings();
   }
 
-  playHitsound(kind: HitsoundKind = 'normal'): void {
-    this.hitsounds.play(kind);
+  playHitsound(): void {
+    playHitsound(this.context);
   }
 
   private applyMediaPlaybackSettings(): void {
-    if (!this.mediaElement) {
+    const media = this.mediaElement;
+    if (!media) {
       return;
     }
 
-    this.mediaElement.playbackRate = this.playbackRate;
-    this.mediaElement.preservesPitch = this.preservePitch;
-    this.mediaElement.mozPreservesPitch = this.preservePitch;
-    this.mediaElement.webkitPreservesPitch = this.preservePitch;
+    media.playbackRate = this.playbackRate;
+    media.preservesPitch = this.preservePitch;
+    media.mozPreservesPitch = this.preservePitch;
+    media.webkitPreservesPitch = this.preservePitch;
   }
 
   private disconnectMediaElement(): void {
@@ -284,28 +220,9 @@ export class WebAudioEngine {
       this.mediaSource = null;
     }
   }
-
-  private stopSource(): void {
-    if (!this.source) {
-      return;
-    }
-
-    this.source.onended = null;
-    try {
-      this.source.stop();
-    } catch {
-      // Source may have already ended; stopping is best-effort cleanup.
-    }
-    this.source.disconnect();
-    this.source = null;
-  }
 }
 
 declare global {
-  interface Window {
-    webkitAudioContext?: typeof AudioContext;
-  }
-
   // Some Safari builds expose this constructor only on globalThis.
   var webkitAudioContext: typeof AudioContext | undefined;
 }

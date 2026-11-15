@@ -23,13 +23,3 @@ export const listDifficultiesForSet = async (
   const tx = database.transaction('difficulties');
   return (await tx.store.index('setId').getAll(setId)) as DifficultyRecord[];
 };
-
-export const deleteBeatmapSet = async (database: IDBPDatabase, setId: string): Promise<void> => {
-  const tx = database.transaction(['beatmapSets', 'difficulties', 'scores'], 'readwrite');
-  await tx.objectStore('beatmapSets').delete(setId);
-
-  const difficultyIndex = tx.objectStore('difficulties').index('setId');
-  const difficultyKeys = await difficultyIndex.getAllKeys(setId);
-  await Promise.all(difficultyKeys.map((key) => tx.objectStore('difficulties').delete(key)));
-  await tx.done;
-};

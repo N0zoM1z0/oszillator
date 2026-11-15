@@ -972,7 +972,7 @@ const tick = (): void => {
 const applyJudgements = (judgements: readonly JudgementEvent[]): void => {
   recordJudgements(judgements);
   if (judgements.some((judgement) => judgement.result !== 'miss')) {
-    audioEngine?.playHitsound('normal');
+    audioEngine?.playHitsound();
   }
 };
 

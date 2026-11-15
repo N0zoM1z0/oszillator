@@ -4,6 +4,4 @@ export type PrepareBeatmapOptions = {
   mods?: readonly GameplayMod[];
 };
 
-export const hasSpeedUpMod = (mods: readonly GameplayMod[] = []): boolean => mods.includes('DT') || mods.includes('NC');
-
-export const gameplayModTimeRate = (mods: readonly GameplayMod[] = []): number => (hasSpeedUpMod(mods) ? 1.5 : 1);
+export const gameplayModTimeRate = (mods: readonly GameplayMod[] = []): number => (mods.includes('DT') || mods.includes('NC') ? 1.5 : 1);

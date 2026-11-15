@@ -32,11 +32,3 @@ export type LocalScoreRecord = {
     miss: number;
   };
 };
-
-export type SettingsRecord = {
-  id: 'settings';
-  audioOffsetMs: number;
-  dimBackground: number;
-  keyK1: string;
-  keyK2: string;
-};

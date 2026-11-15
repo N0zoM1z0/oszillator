@@ -1,6 +1,6 @@
 import type { PreparedObject } from '@oszillator/ruleset-std';
 
-export const clampRenderValue = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+import { clamp } from './visuals';
 
 export const includeActiveLongObjectStartIndex = (
   objects: readonly PreparedObject[],
@@ -29,20 +29,20 @@ export const objectRenderAlpha = (
   }
 
   const appearTimeMs = object.startTimeMs - preemptMs;
-  const fadeInProgress = clampRenderValue((gameTimeMs - appearTimeMs) / Math.max(1, fadeInMs), 0, 1);
+  const fadeInProgress = clamp((gameTimeMs - appearTimeMs) / Math.max(1, fadeInMs), 0, 1);
   if (hidden) {
     const fadeOutStartMs = appearTimeMs + fadeInMs;
     const fadeOutEndMs = object.startTimeMs - preemptMs * 0.28;
-    const fadeOutProgress = clampRenderValue(1 - (gameTimeMs - fadeOutStartMs) / Math.max(1, fadeOutEndMs - fadeOutStartMs), 0, 1);
+    const fadeOutProgress = clamp(1 - (gameTimeMs - fadeOutStartMs) / Math.max(1, fadeOutEndMs - fadeOutStartMs), 0, 1);
     return fadeInProgress * fadeOutProgress;
   }
 
-  const fadeOutProgress = gameTimeMs <= object.endTimeMs ? 1 : clampRenderValue(1 - (gameTimeMs - object.endTimeMs) / 220, 0, 1);
+  const fadeOutProgress = gameTimeMs <= object.endTimeMs ? 1 : clamp(1 - (gameTimeMs - object.endTimeMs) / 220, 0, 1);
   return fadeInProgress * fadeOutProgress;
 };
 
 export const approachCircleRadius = (startTimeMs: number, gameTimeMs: number, radius: number, preemptMs: number): number => {
   const timeUntilHitMs = Math.max(startTimeMs - gameTimeMs, 0);
-  const progress = clampRenderValue(1 - timeUntilHitMs / Math.max(1, preemptMs), 0, 1);
+  const progress = clamp(1 - timeUntilHitMs / Math.max(1, preemptMs), 0, 1);
   return radius * (1 + (1 - progress) * 2.7);
 };

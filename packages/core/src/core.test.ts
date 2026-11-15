@@ -21,6 +21,13 @@ describe('playfield transforms', () => {
     expect(playfieldPosition.y).toBeCloseTo(192);
   });
 
+  it('keeps the 512x384 aspect ratio centred in wide viewports', () => {
+    const transform = computePlayfieldTransform({ width: 1000, height: 500 });
+
+    expect(transform.width / transform.height).toBeCloseTo(512 / 384);
+    expect(transform.offsetX).toBeCloseTo((1000 - transform.width) / 2);
+  });
+
   it('supports padded outer frames without changing playfield coordinate round trips', () => {
     const transform = computePlayfieldTransform({ width: 640, height: 512, playfieldPadding: 64 });
 

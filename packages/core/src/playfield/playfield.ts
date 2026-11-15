@@ -64,6 +64,3 @@ export const playfieldToScreen = (transform: PlayfieldTransform, position: Vec2)
 
 export const screenToPlayfield = (transform: PlayfieldTransform, position: Vec2): Vec2 =>
   vec2((position.x - transform.offsetX) / transform.scale, (position.y - transform.offsetY) / transform.scale);
-
-export const isPointInPlayfield = (position: Vec2): boolean =>
-  position.x >= 0 && position.x <= PLAYFIELD_WIDTH && position.y >= 0 && position.y <= PLAYFIELD_HEIGHT;

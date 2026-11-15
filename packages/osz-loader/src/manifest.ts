@@ -7,15 +7,7 @@ import { unzipOszArchive } from './unzip';
 
 const textDecoder = new TextDecoder();
 
-export type ArchiveFileEntry = {
-  path: string;
-  normalizedPath: string;
-  size: number;
-  extension: string;
-};
-
 export type BeatmapManifestEntry = {
-  filePath: string;
   normalizedPath: string;
   parsed: ParsedOsuFile;
   audioPath: string | null;
@@ -25,25 +17,11 @@ export type BeatmapManifestEntry = {
   supported: boolean;
 };
 
-export type AssetManifest = {
-  audioCandidates: string[];
-  imageCandidates: string[];
-  videoCandidates: string[];
-  hitsoundCandidates: string[];
-};
-
 export type OszArchiveManifest = {
   archiveId: string;
-  files: ArchiveFileEntry[];
   beatmaps: BeatmapManifestEntry[];
-  assets: AssetManifest;
   entryBytes: Record<string, Uint8Array>;
 };
-
-const AUDIO_EXTENSIONS = new Set(['.mp3', '.ogg', '.wav', '.m4a']);
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp']);
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.ogv', '.mov', '.avi']);
-const HITSOUND_EXTENSIONS = new Set(['.wav', '.ogg', '.mp3']);
 
 const fileExtension = (value: string): string => {
   const lastDot = value.lastIndexOf('.');
@@ -53,26 +31,6 @@ const fileExtension = (value: string): string => {
 export const buildOszArchiveManifest = (entries: readonly ArchiveEntry[]): OszArchiveManifest => {
   const normalizedPaths = entries.map((entry) => entry.normalizedPath);
   const entryBytes = Object.fromEntries(entries.map((entry) => [entry.normalizedPath, entry.bytes]));
-  const files = entries.map<ArchiveFileEntry>((entry) => ({
-    path: entry.path,
-    normalizedPath: entry.normalizedPath,
-    size: entry.bytes.byteLength,
-    extension: fileExtension(entry.normalizedPath)
-  }));
-
-  const audioCandidates = files
-    .filter((entry) => AUDIO_EXTENSIONS.has(entry.extension))
-    .map((entry) => entry.normalizedPath);
-  const imageCandidates = files
-    .filter((entry) => IMAGE_EXTENSIONS.has(entry.extension))
-    .map((entry) => entry.normalizedPath);
-  const videoCandidates = files
-    .filter((entry) => VIDEO_EXTENSIONS.has(entry.extension))
-    .map((entry) => entry.normalizedPath);
-  const hitsoundCandidates = files
-    .filter((entry) => HITSOUND_EXTENSIONS.has(entry.extension))
-    .map((entry) => entry.normalizedPath);
-
   const beatmaps = entries
     .filter((entry) => fileExtension(entry.normalizedPath) === '.osu')
     .map<BeatmapManifestEntry>((entry) => {
@@ -84,7 +42,6 @@ export const buildOszArchiveManifest = (entries: readonly ArchiveEntry[]): OszAr
         .filter((path): path is string => Boolean(path));
 
       return {
-        filePath: entry.path,
         normalizedPath: entry.normalizedPath,
         audioPath: resolveArchivePath(normalizedPaths, parsed.general.audioFilename, entry.normalizedPath),
         backgroundPath: resolveArchivePath(normalizedPaths, parsed.events.backgroundFilename, entry.normalizedPath),
@@ -97,14 +54,7 @@ export const buildOszArchiveManifest = (entries: readonly ArchiveEntry[]): OszAr
 
   return {
     archiveId: hashArchivePrefix(entries),
-    files,
     beatmaps,
-    assets: {
-      audioCandidates,
-      imageCandidates,
-      videoCandidates,
-      hitsoundCandidates
-    },
     entryBytes
   };
 };
