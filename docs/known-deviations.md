@@ -10,4 +10,7 @@
 - Double Time uses 1.5x playback and clock scaling with browser pitch preservation enabled.
 - Nightcore uses the same 1.5x gameplay timing as Double Time and disables pitch preservation, but does not yet add osu!'s extra nightcore drum track.
 - Hidden uses renderer-side fade behavior.
+- Stack leniency is not applied: objects at the same position overlap, drawn with earlier objects on top, instead of being offset into stacks.
+- Every successful hit plays one synthesized click; beatmap hitsounds and custom samples are not played.
+- Local scores are saved only for complete runs without mods or autoplay.
 - Autoplay (`AutoplayDriver` in `ruleset-std`) injects idealised inputs through the normal judgement path and is excluded from local score persistence.
