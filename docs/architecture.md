@@ -47,3 +47,7 @@ Selections are serialised and only the newest request wins. Showcase downloads h
 - Input callbacks only feed the game and record judgements. The HUD touches the DOM only when the score or hit history changed; the debug panel is throttled to 4 Hz.
 - Changing beatmap or mods reuses the canvas and `AudioContext`; the same audio file reuses its media source. Stage media survives mod changes and is unloaded before its blob URLs are revoked.
 - A finished run's score is snapshotted and written at most once per run, even if IndexedDB is slow; restarting starts a new run.
+
+## Local storage
+
+IndexedDB `oszillator` (schema v2) holds `beatmapSets` (keyed by archive ID), `difficulties` (keyed by `<archive ID>/<.osu path>`, see `difficultyRecordId`) and `scores` (indexed by difficulty ID); `settings` is reserved. Every schema change bumps `STORAGE_SCHEMA_VERSION` and adds a step to `migrateStorage` with a test that upgrades a database written by the previous version.

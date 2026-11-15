@@ -1,4 +1,4 @@
-export const STORAGE_SCHEMA_VERSION = 1;
+export const STORAGE_SCHEMA_VERSION = 2;
 export const STORAGE_DB_NAME = 'oszillator';
 
 export type BeatmapSetRecord = {
@@ -9,7 +9,15 @@ export type BeatmapSetRecord = {
   importedAt: number;
 };
 
+/**
+ * Difficulty IDs combine the archive ID with the `.osu` path inside it, so
+ * equally named files in different archives do not overwrite each other.
+ * (Schema v1 used the bare path.)
+ */
+export const difficultyRecordId = (setId: string, normalizedPath: string): string => `${setId}/${normalizedPath}`;
+
 export type DifficultyRecord = {
+  /** See `difficultyRecordId`. */
   id: string;
   setId: string;
   version: string;
@@ -20,6 +28,7 @@ export type DifficultyRecord = {
 
 export type LocalScoreRecord = {
   id: string;
+  /** `DifficultyRecord.id` of the played difficulty. */
   difficultyId: string;
   playedAt: number;
   score: number;

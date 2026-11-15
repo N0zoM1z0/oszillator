@@ -17,6 +17,7 @@ Vitest runs every `*.test.ts` under `packages/` and `apps/` in Node:
 - beatmap preparation: combo colours, HardRock mirroring, slider checkpoints and tail timing;
 - judgement and autoplay: circles, slider checkpoints, spinners, and autoplay producing identical results regardless of frame pacing;
 - archive manifests: path resolution, bounded ID hashing and deduplicated worker transfers;
+- storage against `fake-indexeddb`: fresh schema creation, archive-scoped difficulty IDs and the v1 → v2 migration;
 - player modules that do not need a browser: HUD maths, difficulty ordering, the preview clock, cursor effects, score persistence, the prepared-beatmap cache and lazy showcase loading;
 - renderer helpers and the slider/view caches, with Pixi mocked. Import renderer constants from `@oszillator/renderer-pixi/visuals` in Node tests, since the package root loads Pixi.
 

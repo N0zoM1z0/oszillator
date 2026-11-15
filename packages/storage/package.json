@@ -9,5 +9,8 @@
   },
   "dependencies": {
     "idb": "^8.0.2"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.8"
   }
 }

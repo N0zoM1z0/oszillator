@@ -1,5 +1,6 @@
 import type { BeatmapManifestEntry, OszArchiveManifest } from '@oszillator/osz-loader';
 import { PixiPlayfieldRenderer } from '@oszillator/renderer-pixi';
+import { difficultyRecordId } from '@oszillator/storage';
 import { AutoplayDriver, RulesetStdGame, type GameplayMod, type JudgementEvent, type PreparedBeatmap } from '@oszillator/ruleset-std';
 
 import { CursorEffects } from './cursor-effects';
@@ -195,7 +196,7 @@ const applyJudgements = (judgements: readonly JudgementEvent[]): void => {
 
 /** Local scores are kept only for complete, unassisted, unmodded runs. */
 const persistScoreIfComplete = (): void => {
-  if (!state.selected || options.autoplay || options.mods.size > 0 || !scorePersistence.canSave || !game.isComplete()) {
+  if (!state.manifest || !state.selected || options.autoplay || options.mods.size > 0 || !scorePersistence.canSave || !game.isComplete()) {
     return;
   }
 
@@ -203,7 +204,7 @@ const persistScoreIfComplete = (): void => {
   void scorePersistence
     .saveOnce({
       id: crypto.randomUUID(),
-      difficultyId: state.selected.normalizedPath,
+      difficultyId: difficultyRecordId(state.manifest.archiveId, state.selected.normalizedPath),
       playedAt: Date.now(),
       score: score.score,
       accuracy: score.accuracy,

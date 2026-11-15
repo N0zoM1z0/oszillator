@@ -1,5 +1,5 @@
 import type { OszArchiveManifest } from '@oszillator/osz-loader';
-import { openOszillatorDb, saveBeatmapSet, saveLocalScore, type LocalScoreRecord } from '@oszillator/storage';
+import { difficultyRecordId, openOszillatorDb, saveBeatmapSet, saveLocalScore, type LocalScoreRecord } from '@oszillator/storage';
 
 const withDatabase = async (task: (database: Awaited<ReturnType<typeof openOszillatorDb>>) => Promise<void>): Promise<void> => {
   const database = await openOszillatorDb();
@@ -28,7 +28,7 @@ export const saveImportedArchive = (manifest: OszArchiveManifest): Promise<void>
         importedAt: Date.now()
       },
       manifest.beatmaps.map((beatmap) => ({
-        id: beatmap.normalizedPath,
+        id: difficultyRecordId(manifest.archiveId, beatmap.normalizedPath),
         setId: manifest.archiveId,
         version: beatmap.parsed.metadata.version,
         objectCount: beatmap.parsed.hitObjects.length,
