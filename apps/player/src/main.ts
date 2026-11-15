@@ -1,15 +1,13 @@
 import { WebAudioEngine } from '@oszillator/audio-engine';
-import type { GameplayButton, GameplayInputEvent, Vec2 } from '@oszillator/core';
 import {
+  AutoplayDriver,
   RulesetStdGame,
   deriveDifficulty,
   type GameplayMod,
   type HitResult,
   type JudgementEvent,
   type PreparedBeatmap,
-  type PreparedObject,
-  type ScoreState,
-  sliderBallPositionAt
+  type ScoreState
 } from '@oszillator/ruleset-std';
 import { PixiPlayfieldRenderer, type CursorTrailPoint, type SmokePuff } from '@oszillator/renderer-pixi';
 import type { OszArchiveManifest, BeatmapManifestEntry } from '@oszillator/osz-loader';
@@ -60,6 +58,7 @@ const state: AppState = {
 let renderer: PixiPlayfieldRenderer | null = null;
 let audioEngine: WebAudioEngine | null = null;
 let game = new RulesetStdGame();
+let autoplay: AutoplayDriver | null = null;
 let inputManager: InputManager | null = null;
 let rafId = 0;
 const preparedBeatmaps = new PreparedBeatmapCache();
@@ -89,8 +88,6 @@ let videoElement: HTMLVideoElement | null = null;
 let smokeActive = false;
 let lastSmokePuffMs = -Infinity;
 let autoplayEnabled = false;
-let autoplayLastTimeMs = 0;
-let autoplayInputId = 0;
 let selectionQueue: Promise<void> = Promise.resolve();
 let selectionRequestId = 0;
 let lastCursorTrailMs = -Infinity;
@@ -117,11 +114,8 @@ const OFFSET_RANGE_MS = 160;
 const MAX_HIT_HISTORY = 56;
 const SMOKE_LIFETIME_MS = 900;
 const SMOKE_INTERVAL_MS = 42;
-const SPINNER_AUTOPLAY_STEP_MS = 35;
-const AUTOPLAY_SPINNER_RADIUS = 120;
 const CURSOR_TRAIL_LIFETIME_MS = 260;
 const MAX_CURSOR_TRAIL = 28;
-const AUTOPLAY_AIM_MS = 520;
 const WAIT_OVERLAY_THRESHOLD_MS = 2500;
 
 root.innerHTML = `
@@ -445,7 +439,7 @@ const renderWaitOverlay = (gameTimeMs: number): void => {
     return;
   }
 
-  const remainingProgress = clamp01(remainingMs / Math.max(1, totalWaitMs));
+  const remainingProgress = Math.min(Math.max(remainingMs / Math.max(1, totalWaitMs), 0), 1);
   waitOverlayElement.classList.add('visible');
   waitOverlayElement.setAttribute('aria-hidden', 'false');
   waitProgressElement.style.transform = `scaleX(${remainingProgress.toFixed(4)})`;
@@ -581,14 +575,9 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: nu
   resetShowcasePreview();
   state.selected = beatmap;
   state.prepared = beatmap ? preparedBeatmaps.get(beatmap.parsed, { mods: selectedMods() }) : null;
-  scorePersistence.startRun();
   preparedEndTimeMs = state.prepared?.objects.reduce((endTime, object) => Math.max(endTime, object.endTimeMs), 0) ?? 0;
   game = new RulesetStdGame();
-  resetVisualState();
-
-  if (state.prepared) {
-    game.start(state.prepared);
-  }
+  restartRun();
 
   if (stageMediaManifest !== manifest || stageMediaBeatmap !== beatmap) {
     teardownStageMedia();
@@ -620,6 +609,17 @@ const selectBeatmap = async (beatmap: BeatmapManifestEntry | null, requestId: nu
   renderDebug(true);
 };
 
+const restartRun = (): void => {
+  if (!state.prepared) {
+    autoplay = null;
+    return;
+  }
+  game.start(state.prepared);
+  autoplay = new AutoplayDriver(game, state.prepared);
+  scorePersistence.startRun();
+  resetVisualState();
+};
+
 const resetVisualState = (): void => {
   hitHistory.length = 0;
   hitHistoryVersion += 1;
@@ -628,7 +628,6 @@ const resetVisualState = (): void => {
   hideWaitOverlay();
   smokeActive = false;
   lastSmokePuffMs = -Infinity;
-  autoplayLastTimeMs = 0;
   lastCursorTrailMs = -Infinity;
 };
 
@@ -920,10 +919,10 @@ const tick = (): void => {
   if (state.prepared && renderer) {
     const time = currentGameTimeMs();
     syncStageVideo(time);
-    if (autoplayEnabled) {
-      updateAutoplayVisualCursor(time);
+    if (autoplayEnabled && autoplay) {
+      autoplay.moveCursorTo(time);
+      applyJudgements(autoplay.advanceTo(time));
     }
-    applyJudgements(autoplayEnabled ? advanceAutoplayTo(time) : []);
     const scheduledJudgements = game.updateTo(time);
     applyJudgements(scheduledJudgements);
     if (loopEnabled && state.prepared.objects.length > 0) {
@@ -932,9 +931,7 @@ const tick = (): void => {
         if (isShowcaseBeatmap(state.selected, state.manifest)) {
           startShowcasePreview(0);
         }
-        game.start(state.prepared);
-        scorePersistence.startRun();
-        resetVisualState();
+        restartRun();
       }
     }
     if (
@@ -981,8 +978,7 @@ const persistScoreIfComplete = (): void => {
     return;
   }
 
-  const judgedCount = game.getJudgedObjectCount();
-  if (judgedCount !== state.prepared.objects.length || judgedCount === 0) {
+  if (!game.isComplete()) {
     return;
   }
 
@@ -1032,241 +1028,6 @@ const syncStageVideo = (gameTimeMs: number): void => {
       // Browser or codec may reject autoplay; keep audio authoritative.
     });
   }
-};
-
-type AutoplayAction =
-  | { kind: 'circle'; timeMs: number; object: Extract<PreparedObject, { kind: 'circle' }> }
-  | { kind: 'slider-head'; timeMs: number; object: Extract<PreparedObject, { kind: 'slider' }> }
-  | { kind: 'slider-checkpoint'; timeMs: number; position: Vec2 }
-  | { kind: 'slider-tail'; timeMs: number; object: Extract<PreparedObject, { kind: 'slider' }>; position: Vec2 }
-  | { kind: 'spinner-head'; timeMs: number; object: Extract<PreparedObject, { kind: 'spinner' }> }
-  | { kind: 'spinner-move'; timeMs: number; position: Vec2 }
-  | { kind: 'spinner-tail'; timeMs: number; object: Extract<PreparedObject, { kind: 'spinner' }> };
-
-const actionPriority = (action: AutoplayAction): number => {
-  if (action.kind === 'slider-checkpoint' || action.kind === 'spinner-move') {
-    return 0;
-  }
-  if (action.kind === 'slider-tail' || action.kind === 'spinner-tail') {
-    return 1;
-  }
-  return 2;
-};
-
-const advanceAutoplayTo = (gameTimeMs: number): JudgementEvent[] => {
-  const beatmap = state.prepared;
-  if (!beatmap) {
-    return [];
-  }
-
-  if (gameTimeMs < autoplayLastTimeMs) {
-    autoplayLastTimeMs = 0;
-  }
-
-  const fromMs = autoplayLastTimeMs;
-  autoplayLastTimeMs = gameTimeMs;
-  if (gameTimeMs <= fromMs) {
-    return [];
-  }
-
-  const actions = collectAutoplayActions(beatmap.objects, fromMs, gameTimeMs);
-  actions.sort((left, right) => left.timeMs - right.timeMs || actionPriority(left) - actionPriority(right));
-
-  const events: JudgementEvent[] = [];
-  for (const action of actions) {
-    events.push(...runAutoplayAction(action));
-  }
-
-  return events;
-};
-
-const collectAutoplayActions = (objects: readonly PreparedObject[], fromMs: number, toMs: number): AutoplayAction[] => {
-  const actions: AutoplayAction[] = [];
-  const renderStates = game.getState().objects;
-
-  for (let index = 0; index < objects.length; index += 1) {
-    const object = objects[index]!;
-    if (object.startTimeMs > toMs) {
-      break;
-    }
-    if (object.endTimeMs < fromMs) {
-      continue;
-    }
-    if (renderStates[index]?.status === 'judged') {
-      continue;
-    }
-
-    if (object.kind === 'circle') {
-      if (isInAutoplayWindow(object.startTimeMs, fromMs, toMs)) {
-        actions.push({ kind: 'circle', timeMs: object.startTimeMs, object });
-      }
-      continue;
-    }
-
-    if (object.kind === 'slider') {
-      if (isInAutoplayWindow(object.startTimeMs, fromMs, toMs)) {
-        actions.push({ kind: 'slider-head', timeMs: object.startTimeMs, object });
-      }
-      for (const checkpoint of object.checkpoints) {
-        if (isInAutoplayWindow(checkpoint.time, fromMs, toMs)) {
-          actions.push({ kind: 'slider-checkpoint', timeMs: checkpoint.time, position: checkpoint.position });
-        }
-      }
-      if (isInAutoplayWindow(object.endTimeMs, fromMs, toMs)) {
-        actions.push({ kind: 'slider-tail', timeMs: object.endTimeMs, object, position: sliderPositionAt(object, object.endTimeMs) });
-      }
-      continue;
-    }
-
-    if (isInAutoplayWindow(object.startTimeMs, fromMs, toMs)) {
-      actions.push({ kind: 'spinner-head', timeMs: object.startTimeMs, object });
-    }
-
-    const firstMove = Math.max(object.startTimeMs, Math.floor(fromMs / SPINNER_AUTOPLAY_STEP_MS) * SPINNER_AUTOPLAY_STEP_MS);
-    for (let timeMs = firstMove; timeMs <= Math.min(object.endTimeMs, toMs); timeMs += SPINNER_AUTOPLAY_STEP_MS) {
-      if (timeMs > fromMs && timeMs >= object.startTimeMs) {
-        actions.push({ kind: 'spinner-move', timeMs, position: spinnerAutoplayPosition(timeMs) });
-      }
-    }
-
-    if (isInAutoplayWindow(object.endTimeMs, fromMs, toMs)) {
-      actions.push({ kind: 'spinner-tail', timeMs: object.endTimeMs, object });
-    }
-  }
-
-  return actions;
-};
-
-const isInAutoplayWindow = (timeMs: number, fromMs: number, toMs: number): boolean => timeMs > fromMs && timeMs <= toMs;
-
-const runAutoplayAction = (action: AutoplayAction): JudgementEvent[] => {
-  if (action.kind === 'circle') {
-    emitAutoplayInput('move', action.timeMs, action.object.position);
-    const events = emitAutoplayInput('press', action.timeMs, action.object.position, nextAutoplayKey());
-    emitAutoplayInput('release', action.timeMs, action.object.position, 'K1');
-    emitAutoplayInput('release', action.timeMs, action.object.position, 'K2');
-    return events;
-  }
-
-  if (action.kind === 'slider-head') {
-    emitAutoplayInput('move', action.timeMs, action.object.position);
-    return emitAutoplayInput('press', action.timeMs, action.object.position, nextAutoplayKey());
-  }
-
-  if (action.kind === 'slider-checkpoint') {
-    emitAutoplayInput('move', action.timeMs, action.position);
-    return game.updateTo(action.timeMs);
-  }
-
-  if (action.kind === 'slider-tail') {
-    emitAutoplayInput('move', action.timeMs, action.position);
-    const events = game.updateTo(action.timeMs);
-    emitAutoplayInput('release', action.timeMs, action.position, 'K1');
-    emitAutoplayInput('release', action.timeMs, action.position, 'K2');
-    return events;
-  }
-
-  if (action.kind === 'spinner-head') {
-    return emitAutoplayInput('press', action.timeMs, spinnerAutoplayPosition(action.timeMs), nextAutoplayKey());
-  }
-
-  if (action.kind === 'spinner-move') {
-    const events = game.updateTo(action.timeMs);
-    emitAutoplayInput('move', action.timeMs, action.position);
-    return events;
-  }
-
-  const events = game.updateTo(action.timeMs);
-  emitAutoplayInput('release', action.timeMs, spinnerAutoplayPosition(action.timeMs), 'K1');
-  emitAutoplayInput('release', action.timeMs, spinnerAutoplayPosition(action.timeMs), 'K2');
-  return events;
-};
-
-const updateAutoplayVisualCursor = (gameTimeMs: number): void => {
-  const beatmap = state.prepared;
-  if (!beatmap) {
-    return;
-  }
-
-  const position = autoplayCursorPositionAt(beatmap.objects, gameTimeMs);
-  if (!position) {
-    return;
-  }
-
-  emitAutoplayInput('move', gameTimeMs, position);
-};
-
-const autoplayCursorPositionAt = (objects: readonly PreparedObject[], gameTimeMs: number): Vec2 | null => {
-  let previousPosition: Vec2 = { x: 256, y: 192 };
-  let previousTimeMs = Math.max(0, gameTimeMs - AUTOPLAY_AIM_MS);
-
-  for (const object of objects) {
-    if (gameTimeMs >= object.startTimeMs && gameTimeMs <= object.endTimeMs) {
-      return objectPositionAt(object, gameTimeMs);
-    }
-
-    if (object.startTimeMs > gameTimeMs) {
-      const aimStartMs = Math.max(previousTimeMs, object.startTimeMs - AUTOPLAY_AIM_MS);
-      const progress = easeInOut(clamp01((gameTimeMs - aimStartMs) / Math.max(1, object.startTimeMs - aimStartMs)));
-      return lerpVec2(previousPosition, objectPositionAt(object, object.startTimeMs), progress);
-    }
-
-    previousPosition = objectPositionAt(object, object.endTimeMs);
-    previousTimeMs = object.endTimeMs;
-  }
-
-  return previousPosition;
-};
-
-const objectPositionAt = (object: PreparedObject, gameTimeMs: number): Vec2 => {
-  if (object.kind === 'slider') {
-    return sliderPositionAt(object, gameTimeMs);
-  }
-  if (object.kind === 'spinner') {
-    return spinnerAutoplayPosition(gameTimeMs);
-  }
-  return object.position;
-};
-
-const clamp01 = (value: number): number => Math.min(Math.max(value, 0), 1);
-
-const easeInOut = (value: number): number => (value < 0.5 ? 2 * value * value : 1 - (-2 * value + 2) ** 2 / 2);
-
-const lerpVec2 = (from: Vec2, to: Vec2, progress: number): Vec2 => ({
-  x: from.x + (to.x - from.x) * progress,
-  y: from.y + (to.y - from.y) * progress
-});
-
-const emitAutoplayInput = (
-  kind: GameplayInputEvent['kind'],
-  gameTimestampMs: number,
-  playfieldPosition: Vec2,
-  key?: GameplayButton
-): JudgementEvent[] => {
-  const event: GameplayInputEvent = {
-    id: `autoplay-${autoplayInputId++}`,
-    kind,
-    source: 'keyboard',
-    playfieldPosition,
-    browserTimestampMs: performance.now(),
-    gameTimestampMs
-  };
-  if (key) {
-    event.key = key;
-  }
-  return game.handleInput(event);
-};
-
-const nextAutoplayKey = (): GameplayButton => (autoplayInputId % 2 === 0 ? 'K1' : 'K2');
-
-const sliderPositionAt = sliderBallPositionAt;
-
-const spinnerAutoplayPosition = (gameTimeMs: number): Vec2 => {
-  const angle = (gameTimeMs / 1000) * Math.PI * 12;
-  return {
-    x: 256 + Math.cos(angle) * AUTOPLAY_SPINNER_RADIUS,
-    y: 192 + Math.sin(angle) * AUTOPLAY_SPINNER_RADIUS
-  };
 };
 
 const updateSmokePuffs = (gameTimeMs: number, cursor: { x: number; y: number }): void => {
@@ -1410,11 +1171,7 @@ seekButton.addEventListener('click', () => {
   if (isShowcaseBeatmap(state.selected, state.manifest)) {
     startShowcasePreview(0);
   }
-  if (state.prepared) {
-    game.start(state.prepared);
-    scorePersistence.startRun();
-    resetVisualState();
-  }
+  restartRun();
   renderDebug(true);
 });
 
@@ -1426,7 +1183,12 @@ loopButton.addEventListener('click', () => {
 
 autoplayButton.addEventListener('click', () => {
   autoplayEnabled = !autoplayEnabled;
-  autoplayLastTimeMs = currentGameTimeMs();
+  const timeMs = currentGameTimeMs();
+  if (autoplayEnabled) {
+    autoplay?.resetTo(timeMs);
+  } else {
+    autoplay?.releaseAll(timeMs);
+  }
   renderSidebar();
   renderDebug(true);
 });

@@ -112,7 +112,8 @@ const createSliderCheckpoints = (
 
     const endpointDistance = reverse ? 0 : raw.pixelLength;
     checkpoints.push({
-      time: raw.time + spanOffset + spanDurationMs,
+      // Same expression as the slider's endTimeMs so the tail lands exactly on it.
+      time: raw.time + spanDurationMs * (repeatIndex + 1),
       position: getSliderPositionAtDistance(path, endpointDistance),
       kind: repeatIndex === raw.repeatCount - 1 ? 'tail' : 'repeat'
     });

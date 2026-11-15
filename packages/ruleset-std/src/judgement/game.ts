@@ -1,24 +1,24 @@
-import { distanceVec2, PLAYFIELD_CENTER, type GameplayInputEvent, type Vec2 } from '@oszillator/core';
+import { distanceVec2, PLAYFIELD_CENTER, type GameplayButton, type GameplayInputEvent, type Vec2 } from '@oszillator/core';
 
-import type { PreparedBeatmap, PreparedSlider, PreparedSpinner } from '../prepare';
+import type { DerivedDifficulty } from '../difficulty';
+import type { PreparedBeatmap, PreparedObject, PreparedSlider, PreparedSpinner } from '../prepare';
 import { applyHitResult, createScoreState, type HitResult, type ScoreState } from '../scoring/score-state';
 
-type ObjectStatus = 'pending' | 'judged';
-
-type SliderProgressState = {
-  headHit: boolean;
+type SliderProgress = {
   headOffsetMs: number;
-  passedCheckpoints: Set<number>;
+  /** Index of the next checkpoint that has not been judged yet. */
+  nextCheckpoint: number;
+  passedCheckpoints: number;
 };
 
-type SpinnerProgressState = {
+type SpinnerProgress = {
   lastAngle: number | null;
   accumulatedRotation: number;
 };
 
 export type ObjectRenderState = {
   id: string;
-  status: ObjectStatus;
+  status: 'pending' | 'judged';
   result?: HitResult;
   judgedAtMs?: number;
 };
@@ -37,46 +37,39 @@ export type JudgementEvent = {
   offsetMs?: number;
 };
 
-const resultFromOffset = (offsetMs: number, windows: PreparedBeatmap['difficulty']): HitResult => {
+/** Rotations per second a spinner needs for a full (300) result. */
+const SPINNER_ROTATIONS_PER_SECOND = 3;
+
+const resultFromOffset = (offsetMs: number, difficulty: DerivedDifficulty): HitResult => {
   const absolute = Math.abs(offsetMs);
-  if (absolute <= windows.hitWindow300Ms) {
-    return 'great';
-  }
-  if (absolute <= windows.hitWindow100Ms) {
-    return 'ok';
-  }
-  if (absolute <= windows.hitWindow50Ms) {
-    return 'meh';
-  }
+  if (absolute <= difficulty.hitWindow300Ms) return 'great';
+  if (absolute <= difficulty.hitWindow100Ms) return 'ok';
+  if (absolute <= difficulty.hitWindow50Ms) return 'meh';
   return 'miss';
 };
 
 const sliderResultFromRatio = (ratio: number): HitResult => {
-  if (ratio >= 0.95) {
-    return 'great';
-  }
-  if (ratio >= 0.7) {
-    return 'ok';
-  }
-  if (ratio >= 0.4) {
-    return 'meh';
-  }
+  if (ratio >= 0.95) return 'great';
+  if (ratio >= 0.7) return 'ok';
+  if (ratio >= 0.4) return 'meh';
   return 'miss';
 };
 
 const spinnerResultFromRatio = (ratio: number): HitResult => {
-  if (ratio >= 1) {
-    return 'great';
-  }
-  if (ratio >= 0.8) {
-    return 'ok';
-  }
-  if (ratio >= 0.55) {
-    return 'meh';
-  }
+  if (ratio >= 1) return 'great';
+  if (ratio >= 0.8) return 'ok';
+  if (ratio >= 0.55) return 'meh';
   return 'miss';
 };
 
+const isActiveSpinner = (object: PreparedObject, timeMs: number): object is PreparedSpinner =>
+  object.kind === 'spinner' && timeMs >= object.startTimeMs && timeMs <= object.endTimeMs;
+
+/**
+ * Deterministic osu!standard-style judgement. Time only moves through
+ * `updateTo` and input timestamps, so replaying the same inputs against the
+ * same prepared beatmap always produces the same results.
+ */
 export class RulesetStdGame {
   private beatmap: PreparedBeatmap | null = null;
 
@@ -84,68 +77,61 @@ export class RulesetStdGame {
 
   private score = createScoreState();
 
-  private objectStates = new Map<string, ObjectRenderState>();
-
-  private objectRenderStates: ObjectRenderState[] = [];
+  private objectStates: ObjectRenderState[] = [];
 
   private firstPendingIndex = 0;
 
   private judgedObjectCount = 0;
 
-  private sliderProgress = new Map<string, SliderProgressState>();
+  private readonly sliderProgress = new Map<number, SliderProgress>();
 
-  private spinnerProgress = new Map<string, SpinnerProgressState>();
+  private readonly spinnerProgress = new Map<number, SpinnerProgress>();
 
   private cursor: Vec2 = PLAYFIELD_CENTER;
 
-  private activeButtons = new Set<string>();
+  private readonly heldButtons = new Set<GameplayButton>();
 
   start(beatmap: PreparedBeatmap): void {
     this.beatmap = beatmap;
     this.currentTimeMs = 0;
     this.score = createScoreState();
-    this.objectRenderStates = beatmap.objects.map((object) => ({ id: object.id, status: 'pending' }));
-    this.objectStates = new Map(this.objectRenderStates.map((state) => [state.id, state]));
+    this.objectStates = beatmap.objects.map((object) => ({ id: object.id, status: 'pending' }));
     this.firstPendingIndex = 0;
     this.judgedObjectCount = 0;
     this.sliderProgress.clear();
     this.spinnerProgress.clear();
     this.cursor = PLAYFIELD_CENTER;
-    this.activeButtons.clear();
+    this.heldButtons.clear();
   }
 
   updateTo(gameTimeMs: number): JudgementEvent[] {
-    if (!this.beatmap) {
+    const beatmap = this.beatmap;
+    if (!beatmap) {
       return [];
     }
 
     this.currentTimeMs = gameTimeMs;
     const events: JudgementEvent[] = [];
-    const latestStartTimeNeedingUpdate = gameTimeMs + this.beatmap.difficulty.hitWindow50Ms;
+    const { hitWindow50Ms } = beatmap.difficulty;
 
-    for (let index = this.firstPendingIndex; index < this.beatmap.objects.length; index += 1) {
-      const object = this.beatmap.objects[index]!;
-      if (object.startTimeMs > latestStartTimeNeedingUpdate) {
+    for (let index = this.firstPendingIndex; index < beatmap.objects.length; index += 1) {
+      const object = beatmap.objects[index]!;
+      if (object.startTimeMs > gameTimeMs + hitWindow50Ms) {
         break;
       }
-
-      const state = this.objectStates.get(object.id);
-      if (!state || state.status === 'judged') {
+      if (this.objectStates[index]!.status === 'judged') {
         continue;
       }
 
-      if (object.kind === 'circle' && gameTimeMs > object.startTimeMs + this.beatmap.difficulty.hitWindow50Ms) {
-        events.push(this.finalizeObject(object.id, 'miss'));
-        continue;
-      }
-
-      if (object.kind === 'slider') {
-        events.push(...this.updateSlider(object, gameTimeMs));
-        continue;
-      }
-
-      if (object.kind === 'spinner' && gameTimeMs >= object.endTimeMs) {
-        events.push(this.completeSpinner(object));
+      if (object.kind === 'circle') {
+        if (gameTimeMs > object.startTimeMs + hitWindow50Ms) {
+          events.push(this.finalize(index, 'miss'));
+        }
+      } else if (object.kind === 'slider') {
+        const event = this.updateSlider(index, object, gameTimeMs, hitWindow50Ms);
+        if (event) events.push(event);
+      } else if (gameTimeMs >= object.endTimeMs) {
+        events.push(this.completeSpinner(index, object));
       }
     }
 
@@ -158,25 +144,21 @@ export class RulesetStdGame {
     }
 
     this.currentTimeMs = event.gameTimestampMs;
-
     if (event.playfieldPosition) {
       this.cursor = event.playfieldPosition;
     }
 
     if (event.kind === 'press' && event.key) {
-      this.activeButtons.add(event.key);
-      return this.handlePress(event);
+      this.heldButtons.add(event.key);
+      return this.handlePress(this.beatmap, event.gameTimestampMs);
     }
-
     if (event.kind === 'release' && event.key) {
-      this.activeButtons.delete(event.key);
+      this.heldButtons.delete(event.key);
       return [];
     }
-
     if (event.kind === 'move') {
-      this.updateSpinnerTracking(event);
+      this.trackSpinners(this.beatmap);
     }
-
     return [];
   }
 
@@ -184,7 +166,7 @@ export class RulesetStdGame {
     return {
       currentTimeMs: this.currentTimeMs,
       score: this.score,
-      objects: this.objectRenderStates,
+      objects: this.objectStates,
       cursor: this.cursor
     };
   }
@@ -197,185 +179,127 @@ export class RulesetStdGame {
     return this.judgedObjectCount;
   }
 
-  private handlePress(event: GameplayInputEvent): JudgementEvent[] {
-    if (!this.beatmap) {
-      return [];
-    }
-
-    const events: JudgementEvent[] = [];
-
-    for (let index = this.firstPendingIndex; index < this.beatmap.objects.length; index += 1) {
-      const object = this.beatmap.objects[index]!;
-      const state = this.objectStates.get(object.id);
-      if (!state || state.status === 'judged') {
-        continue;
-      }
-
-      if (object.kind === 'spinner' && event.gameTimestampMs >= object.startTimeMs && event.gameTimestampMs <= object.endTimeMs) {
-        this.spinnerProgress.set(object.id, { lastAngle: null, accumulatedRotation: 0 });
-        continue;
-      }
-
-      if (event.gameTimestampMs < object.startTimeMs - this.beatmap.difficulty.hitWindow50Ms) {
-        break;
-      }
-
-      if (event.gameTimestampMs > object.startTimeMs + this.beatmap.difficulty.hitWindow50Ms) {
-        continue;
-      }
-
-      const offset = event.gameTimestampMs - object.startTimeMs;
-      const withinCircle = !event.playfieldPosition
-        ? false
-        : distanceVec2(event.playfieldPosition, object.position) <= object.radius;
-
-      if (object.kind === 'circle') {
-        if (!withinCircle) {
-          continue;
-        }
-
-        events.push(this.finalizeObject(object.id, resultFromOffset(offset, this.beatmap.difficulty), offset));
-        break;
-      }
-
-      if (object.kind === 'slider') {
-        if (!withinCircle) {
-          continue;
-        }
-
-        this.sliderProgress.set(object.id, {
-          headHit: resultFromOffset(offset, this.beatmap.difficulty) !== 'miss',
-          headOffsetMs: offset,
-          passedCheckpoints: new Set()
-        });
-        break;
-      }
-    }
-
-    return events;
+  isComplete(): boolean {
+    return this.beatmap !== null && this.judgedObjectCount === this.beatmap.objects.length && this.judgedObjectCount > 0;
   }
 
-  private updateSlider(slider: PreparedSlider, gameTimeMs: number): JudgementEvent[] {
-    const state = this.objectStates.get(slider.id);
-    if (!state || state.status === 'judged') {
-      return [];
-    }
+  private handlePress(beatmap: PreparedBeatmap, timeMs: number): JudgementEvent[] {
+    const { hitWindow50Ms } = beatmap.difficulty;
 
-    const progress = this.sliderProgress.get(slider.id);
-    if (!progress) {
-      if (gameTimeMs > slider.startTimeMs + this.beatmap!.difficulty.hitWindow50Ms) {
-        return [this.finalizeObject(slider.id, 'miss')];
+    for (let index = this.firstPendingIndex; index < beatmap.objects.length; index += 1) {
+      const object = beatmap.objects[index]!;
+      if (object.kind === 'spinner' || this.objectStates[index]!.status === 'judged') {
+        continue;
       }
-      return [];
-    }
-
-    if (this.activeButtons.size > 0) {
-      for (let index = 0; index < slider.checkpoints.length; index += 1) {
-        const checkpoint = slider.checkpoints[index]!;
-        if (checkpoint.time > gameTimeMs || progress.passedCheckpoints.has(index)) {
-          continue;
-        }
-
-        if (distanceVec2(this.cursor, checkpoint.position) <= slider.followRadius) {
-          progress.passedCheckpoints.add(index);
-        }
+      if (timeMs < object.startTimeMs - hitWindow50Ms) {
+        break;
       }
-    }
+      if (timeMs > object.startTimeMs + hitWindow50Ms || this.sliderProgress.has(index)) {
+        continue;
+      }
+      if (distanceVec2(this.cursor, object.position) > object.radius) {
+        continue;
+      }
 
-    if (gameTimeMs >= slider.endTimeMs) {
-      const totalParts = slider.checkpoints.length + 1;
-      const successfulParts = (progress.headHit ? 1 : 0) + progress.passedCheckpoints.size;
-      return [this.finalizeObject(slider.id, sliderResultFromRatio(successfulParts / totalParts), progress.headOffsetMs)];
+      const offsetMs = timeMs - object.startTimeMs;
+      if (object.kind === 'circle') {
+        return [this.finalize(index, resultFromOffset(offsetMs, beatmap.difficulty), offsetMs)];
+      }
+
+      this.sliderProgress.set(index, { headOffsetMs: offsetMs, nextCheckpoint: 0, passedCheckpoints: 0 });
+      return [];
     }
 
     return [];
   }
 
-  private completeSpinner(spinner: PreparedSpinner): JudgementEvent {
-    const progress = this.spinnerProgress.get(spinner.id) ?? { accumulatedRotation: 0, lastAngle: null };
-    const durationSeconds = Math.max((spinner.endTimeMs - spinner.startTimeMs) / 1000, 0.1);
-    const requiredRotations = durationSeconds * 3;
-    const ratio = progress.accumulatedRotation / (Math.PI * 2 * requiredRotations);
-    return this.finalizeObject(spinner.id, spinnerResultFromRatio(ratio));
-  }
-
-  private updateSpinnerTracking(event: GameplayInputEvent): void {
-    if (!this.beatmap || !event.playfieldPosition) {
-      return;
+  private updateSlider(index: number, slider: PreparedSlider, timeMs: number, hitWindow50Ms: number): JudgementEvent | null {
+    const progress = this.sliderProgress.get(index);
+    if (!progress) {
+      return timeMs > slider.startTimeMs + hitWindow50Ms ? this.finalize(index, 'miss') : null;
     }
 
-    for (let index = this.firstPendingIndex; index < this.beatmap.objects.length; index += 1) {
-      const object = this.beatmap.objects[index]!;
+    // Each checkpoint is judged once, when its time is reached, against the
+    // cursor and buttons at that moment. A missed tick cannot be recovered by
+    // returning to its position later.
+    const following = this.heldButtons.size > 0;
+    while (progress.nextCheckpoint < slider.checkpoints.length) {
+      const checkpoint = slider.checkpoints[progress.nextCheckpoint]!;
+      if (checkpoint.time > timeMs && timeMs < slider.endTimeMs) {
+        break;
+      }
+      if (following && distanceVec2(this.cursor, checkpoint.position) <= slider.followRadius) {
+        progress.passedCheckpoints += 1;
+      }
+      progress.nextCheckpoint += 1;
+    }
+
+    if (timeMs < slider.endTimeMs) {
+      return null;
+    }
+
+    // The head counts as one part; it was hit inside the 50 window by construction.
+    const ratio = (1 + progress.passedCheckpoints) / (1 + slider.checkpoints.length);
+    return this.finalize(index, sliderResultFromRatio(ratio), progress.headOffsetMs);
+  }
+
+  private completeSpinner(index: number, spinner: PreparedSpinner): JudgementEvent {
+    const rotation = this.spinnerProgress.get(index)?.accumulatedRotation ?? 0;
+    const durationSeconds = Math.max((spinner.endTimeMs - spinner.startTimeMs) / 1000, 0.1);
+    const ratio = rotation / (Math.PI * 2 * SPINNER_ROTATIONS_PER_SECOND * durationSeconds);
+    return this.finalize(index, spinnerResultFromRatio(ratio));
+  }
+
+  private trackSpinners(beatmap: PreparedBeatmap): void {
+    const holding = this.heldButtons.size > 0;
+    const angle = Math.atan2(this.cursor.y - PLAYFIELD_CENTER.y, this.cursor.x - PLAYFIELD_CENTER.x);
+
+    for (let index = this.firstPendingIndex; index < beatmap.objects.length; index += 1) {
+      const object = beatmap.objects[index]!;
       if (object.startTimeMs > this.currentTimeMs) {
         break;
       }
-
-      if (object.kind !== 'spinner') {
-        continue;
-      }
-      if (this.currentTimeMs < object.startTimeMs || this.currentTimeMs > object.endTimeMs) {
+      if (!isActiveSpinner(object, this.currentTimeMs)) {
         continue;
       }
 
-      const progress = this.spinnerProgress.get(object.id) ?? { lastAngle: null, accumulatedRotation: 0 };
-      const angle = Math.atan2(event.playfieldPosition.y - PLAYFIELD_CENTER.y, event.playfieldPosition.x - PLAYFIELD_CENTER.x);
+      let progress = this.spinnerProgress.get(index);
+      if (!progress) {
+        progress = { lastAngle: null, accumulatedRotation: 0 };
+        this.spinnerProgress.set(index, progress);
+      }
 
-      if (progress.lastAngle !== null) {
+      // Rotation only counts while a button is held, but the reference angle
+      // always follows the cursor so releasing and re-pressing loses nothing.
+      if (holding && progress.lastAngle !== null) {
         let delta = angle - progress.lastAngle;
-        if (delta > Math.PI) {
-          delta -= Math.PI * 2;
-        }
-        if (delta < -Math.PI) {
-          delta += Math.PI * 2;
-        }
+        if (delta > Math.PI) delta -= Math.PI * 2;
+        if (delta < -Math.PI) delta += Math.PI * 2;
         progress.accumulatedRotation += Math.abs(delta);
       }
-
       progress.lastAngle = angle;
-      this.spinnerProgress.set(object.id, progress);
     }
   }
 
-  private finalizeObject(objectId: string, result: HitResult, offsetMs?: number): JudgementEvent {
-    const state = this.objectStates.get(objectId);
-    if (!state) {
-      return this.createJudgementEvent(objectId, result, offsetMs);
-    }
-    if (state.status === 'judged') {
-      return this.createJudgementEvent(objectId, state.result ?? result, offsetMs);
-    }
-
+  private finalize(index: number, result: HitResult, offsetMs?: number): JudgementEvent {
+    const state = this.objectStates[index]!;
     state.status = 'judged';
     state.result = result;
     state.judgedAtMs = this.currentTimeMs;
     this.judgedObjectCount += 1;
     this.score = applyHitResult(this.score, result);
-    this.advanceFirstPendingIndex();
+    this.sliderProgress.delete(index);
+    this.spinnerProgress.delete(index);
 
-    return this.createJudgementEvent(objectId, result, offsetMs);
-  }
+    while (this.firstPendingIndex < this.objectStates.length && this.objectStates[this.firstPendingIndex]!.status === 'judged') {
+      this.firstPendingIndex += 1;
+    }
 
-  private createJudgementEvent(objectId: string, result: HitResult, offsetMs?: number): JudgementEvent {
     return {
-      objectId,
+      objectId: state.id,
       result,
       timeMs: this.currentTimeMs,
       ...(offsetMs === undefined ? {} : { offsetMs })
     };
-  }
-
-  private advanceFirstPendingIndex(): void {
-    if (!this.beatmap) {
-      return;
-    }
-
-    while (this.firstPendingIndex < this.beatmap.objects.length) {
-      const object = this.beatmap.objects[this.firstPendingIndex]!;
-      const state = this.objectStates.get(object.id);
-      if (!state || state.status !== 'judged') {
-        break;
-      }
-      this.firstPendingIndex += 1;
-    }
   }
 }

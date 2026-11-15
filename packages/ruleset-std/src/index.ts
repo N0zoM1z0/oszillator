@@ -1,3 +1,4 @@
+export * from './autoplay';
 export * from './control-points';
 export * from './difficulty';
 export * from './judgement/game';

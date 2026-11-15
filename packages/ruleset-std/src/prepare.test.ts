@@ -262,3 +262,22 @@ SliderTickRate: 1
     expect(sliderBallPositionAt(slider, 9000)).toEqual({ x: 0, y: 0 });
   });
 });
+
+describe('slider tail timing', () => {
+  it.each([1, 2, 3, 5, 7, 9])('places the tail checkpoint exactly on the slider end with %i spans', (repeats) => {
+    const parsed = parseOsu(`osu file format v14
+[Difficulty]
+SliderMultiplier: 1.4
+[TimingPoints]
+0,307.692307692308,4,2,0,60,1,0
+[HitObjects]
+200,200,18442,2,0,L|235:200,${repeats},35.625001358986
+`);
+    const slider = prepareBeatmap(parsed).objects[0];
+    if (slider?.kind !== 'slider') throw new Error('Expected slider');
+
+    // Regression: summing span offsets could put the tail a few ulps after
+    // endTimeMs, so it was never judged and autoplay lost the slider's 300.
+    expect(slider.checkpoints.at(-1)?.time).toBe(slider.endTimeMs);
+  });
+});
