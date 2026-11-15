@@ -9,16 +9,16 @@
                     audio-engine ───┴─ game time ─────┘
 ```
 
-| Package | Responsibility |
-| --- | --- |
-| `core` | `Vec2`, playfield transforms, binary search, input event types. |
-| `osu-parser` | Warning-first `.osu` parser. Unknown sections and malformed lines become warnings, never exceptions (only a missing format header throws). |
-| `osz-loader` | Unzips an archive, parses every `.osu`, resolves audio/background/video/sample paths and computes the archive ID. |
-| `slider-geometry` | Deterministic slider path sampling (linear, multi-segment bezier, perfect circle, catmull) and arc-length lookup. |
-| `ruleset-std` | Turns a parsed beatmap into a `PreparedBeatmap` (mods, difficulty, combo colours, slider checkpoints), judges input (`RulesetStdGame`), scores, and drives autoplay (`AutoplayDriver`). No DOM or Pixi. |
-| `audio-engine` | `WebAudioEngine`: plays an `HTMLMediaElement` through an `AudioContext` and exposes the authoritative game clock. |
-| `renderer-pixi` | Draws prepared state with Pixi. It never parses beatmaps or judges anything. `@oszillator/renderer-pixi/visuals` exposes its Pixi-free constants and colour helpers. |
-| `storage` | IndexedDB schema, migrations and repositories for the local library and scores. |
+| Package           | Responsibility                                                                                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`            | `Vec2`, playfield transforms, binary search, input event types.                                                                                                                                         |
+| `osu-parser`      | Warning-first `.osu` parser. Unknown sections and malformed lines become warnings, never exceptions (only a missing format header throws).                                                              |
+| `osz-loader`      | Unzips an archive, parses every `.osu`, resolves audio/background/video/sample paths and computes the archive ID.                                                                                       |
+| `slider-geometry` | Deterministic slider path sampling (linear, multi-segment bezier, perfect circle, catmull) and arc-length lookup.                                                                                       |
+| `ruleset-std`     | Turns a parsed beatmap into a `PreparedBeatmap` (mods, difficulty, combo colours, slider checkpoints), judges input (`RulesetStdGame`), scores, and drives autoplay (`AutoplayDriver`). No DOM or Pixi. |
+| `audio-engine`    | `WebAudioEngine`: plays an `HTMLMediaElement` through an `AudioContext` and exposes the authoritative game clock.                                                                                       |
+| `renderer-pixi`   | Draws prepared state with Pixi. It never parses beatmaps or judges anything. `@oszillator/renderer-pixi/visuals` exposes its Pixi-free constants and colour helpers.                                    |
+| `storage`         | IndexedDB schema, migrations and repositories for the local library and scores.                                                                                                                         |
 
 ## Timing
 

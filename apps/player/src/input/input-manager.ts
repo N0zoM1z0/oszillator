@@ -7,7 +7,8 @@ import {
   type GameplayButton,
   type GameplayInputEvent,
   type PlayfieldTransform,
-  type ScreenRect
+  type ScreenRect,
+  type Vec2
 } from '@oszillator/core';
 
 export type InputManagerOptions = {
@@ -26,10 +27,14 @@ const keyboardMap = new Map<string, GameplayButton>([
 let inputId = 0;
 
 type PointerSnapshot = {
-  screenPosition: ReturnType<typeof vec2>;
-  playfieldPosition: ReturnType<typeof vec2>;
+  screenPosition: Vec2;
+  playfieldPosition: Vec2;
 };
 
+/**
+ * Translates keyboard (Z/X), pointer and smoke-key (C) events on the stage
+ * into gameplay input stamped with the current game time.
+ */
 export class InputManager {
   private transform: PlayfieldTransform;
 
@@ -68,7 +73,7 @@ export class InputManager {
     });
   };
 
-  private readonly pointerSnapshotForScreen = (screenPosition: ReturnType<typeof vec2>): PointerSnapshot => ({
+  private readonly pointerSnapshotForScreen = (screenPosition: Vec2): PointerSnapshot => ({
     screenPosition,
     playfieldPosition: screenToPlayfield(this.transform, screenPosition)
   });
@@ -78,7 +83,7 @@ export class InputManager {
     return this.lastPointer;
   };
 
-  private readonly pointerPosition = (event: PointerEvent) => {
+  private readonly pointerPosition = (event: PointerEvent): PointerSnapshot => {
     const rect = this.options.target.getBoundingClientRect();
     const screenPosition = vec2(event.clientX - rect.left, event.clientY - rect.top);
     this.lastPointer = this.pointerSnapshotForScreen(screenPosition);
