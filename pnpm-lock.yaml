@@ -63,11 +63,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/storage
 
-  packages/audio-engine:
-    dependencies:
-      '@oszillator/core':
-        specifier: workspace:*
-        version: link:../core
+  packages/audio-engine: {}
 
   packages/core: {}
 
@@ -97,6 +93,10 @@ importers:
       pixi.js:
         specifier: ^8.11.0
         version: 8.18.1
+    devDependencies:
+      '@oszillator/osu-parser':
+        specifier: workspace:*
+        version: link:../osu-parser
 
   packages/ruleset-std:
     dependencies:

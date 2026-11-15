@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { objectDepthStyle, sliderVisualMetrics } from './visuals';
+import { approachDepthScale, sliderVisualMetrics } from './visuals';
 
 describe('slider visual metrics', () => {
   it('keeps the slider head aligned with the outer track diameter', () => {
@@ -21,16 +21,9 @@ describe('slider visual metrics', () => {
     expect(metrics.highlightWidth).toBeLessThan(metrics.innerWidth);
   });
 
-  it('keeps object depth free of extra luminance changes', () => {
-    const early = objectDepthStyle({ startTimeMs: 2000 }, 900, 1200);
-    const near = objectDepthStyle({ startTimeMs: 2000 }, 1950, 1200);
-
-    expect(early.alpha).toBe(1);
-    expect(near.alpha).toBe(1);
-    expect(early.ringAlpha).toBe(1);
-    expect(near.ringAlpha).toBe(1);
-    expect(early.shadowAlpha).toBe(near.shadowAlpha);
-    expect(early.edgeWidth).toBe(near.edgeWidth);
-    expect(near.scale).toBeGreaterThan(early.scale);
+  it('scales objects up slightly as they approach', () => {
+    expect(approachDepthScale(2000, 800, 1200)).toBeCloseTo(0.97);
+    expect(approachDepthScale(2000, 1400, 1200)).toBeCloseTo(0.985);
+    expect(approachDepthScale(2000, 2000, 1200)).toBe(1);
   });
 });

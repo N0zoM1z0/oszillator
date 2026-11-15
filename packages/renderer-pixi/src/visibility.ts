@@ -2,19 +2,46 @@ import type { PreparedObject } from '@oszillator/ruleset-std';
 
 import { clamp } from './visuals';
 
+const runningMaxEndTimes = new WeakMap<readonly PreparedObject[], Float64Array>();
+
+/** maxEnd[i] = latest endTimeMs among objects[0..i]; non-decreasing, cached per beatmap. */
+const maxEndTimesFor = (objects: readonly PreparedObject[]): Float64Array => {
+  let maxEnd = runningMaxEndTimes.get(objects);
+  if (!maxEnd || maxEnd.length !== objects.length) {
+    maxEnd = new Float64Array(objects.length);
+    let latest = -Infinity;
+    for (let index = 0; index < objects.length; index += 1) {
+      latest = Math.max(latest, objects[index]!.endTimeMs);
+      maxEnd[index] = latest;
+    }
+    runningMaxEndTimes.set(objects, maxEnd);
+  }
+  return maxEnd;
+};
+
+/**
+ * Objects are sorted by start time, but a long slider or spinner that started
+ * well before the visible window can still be on screen. Returns the earliest
+ * index before `startIndex` whose object ends at or after `cutoffTimeMs`
+ * (or `startIndex` if there is none), in O(log n).
+ */
 export const includeActiveLongObjectStartIndex = (
   objects: readonly PreparedObject[],
   startIndex: number,
   cutoffTimeMs: number
 ): number => {
-  let earliestActiveIndex = startIndex;
-  for (let index = startIndex - 1; index >= 0; index -= 1) {
-    const previous = objects[index];
-    if (previous && previous.endTimeMs >= cutoffTimeMs) {
-      earliestActiveIndex = index;
+  const maxEnd = maxEndTimesFor(objects);
+  let low = 0;
+  let high = Math.min(startIndex, objects.length);
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (maxEnd[middle]! < cutoffTimeMs) {
+      low = middle + 1;
+    } else {
+      high = middle;
     }
   }
-  return earliestActiveIndex;
+  return low;
 };
 
 export const objectRenderAlpha = (
