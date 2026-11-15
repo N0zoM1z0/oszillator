@@ -2,17 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { computePlayfieldTransform, playfieldToScreen } from '@oszillator/core';
 
+import { stageSettingsForSize } from '../src/stage-layout';
+
 type ZipEntry = {
   name: string;
   data: Uint8Array;
-};
-
-const PLAYFIELD_PADDING_OSU = 72;
-const STAGE_INSET = {
-  top: 28,
-  right: 28,
-  bottom: 18,
-  left: 28
 };
 
 const textEncoder = new TextEncoder();
@@ -202,6 +196,18 @@ const waitingOsz = (): Buffer =>
     ])
   );
 
+// Audio (3 s) ends before the last object's end + 1 s hold (3.5 s).
+const shortAudioOsz = (): Buffer =>
+  Buffer.from(
+    createStoredZip([
+      { name: 'audio.wav', data: createSilentWav(3) },
+      { name: 'short.osu', data: textEncoder.encode(osuDifficulty('Short', 0, '256,192,1000,1,0,0:0:0:0:\n256,192,2500,1,0,0:0:0:0:')) }
+    ])
+  );
+
+const readDebug = async (page: Page): Promise<{ audio: string; gameTimeMs: number; mods: string[]; counts: { great: number } }> =>
+  JSON.parse((await page.getByTestId('debug').textContent()) ?? '{}');
+
 const moveMouseToPlayfield = async (page: Page, x: number, y: number): Promise<void> => {
   const canvasBox = await page.locator('canvas').boundingBox();
   expect(canvasBox).not.toBeNull();
@@ -209,15 +215,7 @@ const moveMouseToPlayfield = async (page: Page, x: number, y: number): Promise<v
     return;
   }
 
-  const transform = computePlayfieldTransform({
-    width: canvasBox.width,
-    height: canvasBox.height,
-    playfieldPadding: PLAYFIELD_PADDING_OSU,
-    insetTop: STAGE_INSET.top,
-    insetRight: STAGE_INSET.right,
-    insetBottom: STAGE_INSET.bottom,
-    insetLeft: STAGE_INSET.left
-  });
+  const transform = computePlayfieldTransform(stageSettingsForSize(canvasBox.width, canvasBox.height));
   const screenPosition = playfieldToScreen(transform, { x, y });
   await page.mouse.move(canvasBox.x + screenPosition.x, canvasBox.y + screenPosition.y);
 };
@@ -693,4 +691,52 @@ test('persists one score when IndexedDB completion is held across multiple frame
       })
     )
     .toBe(1);
+});
+
+test('starts a fresh run when playing again after the song ended', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({ name: 'short.osz', mimeType: 'application/zip', buffer: shortAudioOsz() });
+  await expect(page.locator('#status')).toHaveText('ready');
+  await page.click('#autoplay-button');
+  await page.click('#play-button');
+  await expect.poll(async () => (await readDebug(page)).audio, { timeout: 8000 }).toBe('stopped');
+  await expect(page.locator('#count-300')).toHaveText('2');
+
+  // Regression: Play used to restart the audio over an already-judged run.
+  await page.click('#play-button');
+  await expect.poll(async () => (await readDebug(page)).audio).toBe('playing');
+  await expect(page.locator('#count-300')).toHaveText('0');
+  await expect(page.locator('#count-300')).toHaveText('1', { timeout: 4000 });
+});
+
+test('loops even when the audio ends before the map does', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({ name: 'short.osz', mimeType: 'application/zip', buffer: shortAudioOsz() });
+  await expect(page.locator('#status')).toHaveText('ready');
+  await page.click('#autoplay-button');
+  await page.click('#loop-button');
+  await expect(page.locator('#loop-button')).toHaveAttribute('aria-pressed', 'true');
+  await page.click('#play-button');
+  await page.waitForFunction(
+    () => ((window as Window & { __oszillatorDebug?: { getGameTimeMs: () => number } }).__oszillatorDebug?.getGameTimeMs() ?? 0) > 2600,
+    undefined,
+    { polling: 20 }
+  );
+  // Regression: time froze at the end of the audio and the loop never fired.
+  await page.waitForFunction(
+    () => ((window as Window & { __oszillatorDebug?: { getGameTimeMs: () => number } }).__oszillatorDebug?.getGameTimeMs() ?? 9999) < 1000,
+    undefined,
+    { polling: 20, timeout: 4000 }
+  );
+  await expect.poll(async () => (await readDebug(page)).audio).toBe('playing');
+});
+
+test('clears the file input so the same archive can be chosen again', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({ name: 'synthetic.osz', mimeType: 'application/zip', buffer: syntheticOsz() });
+  await expect(page.locator('#status')).toHaveText('ready');
+
+  // Browsers only fire `change` when the value differs, so a stale value made
+  // re-selecting the same .osz from the file picker do nothing.
+  await expect(page.locator('#file-input')).toHaveValue('');
 });

@@ -15,29 +15,23 @@ import {
   easeOutCubic,
   smoothstep,
   JUDGED_OBJECT_FADE_MS,
+  SMOKE_LIFETIME_MS,
+  CURSOR_TRAIL_LIFETIME_MS,
   objectVisualColour,
   objectDepthStyle,
+  type EffectPoint,
   type ObjectDepthStyle,
   type Rgb
 } from './visuals';
 
-export { objectVisualColour, objectDepthStyle, sliderVisualMetrics, type SliderVisualMetrics, type ObjectDepthStyle } from './visuals';
 
 export type RenderSettings = ScreenRect & {
   backgroundDim: number;
 };
 
-export type SmokePuff = {
-  x: number;
-  y: number;
-  createdAtMs: number;
-};
+export type SmokePuff = EffectPoint;
 
-export type CursorTrailPoint = {
-  x: number;
-  y: number;
-  createdAtMs: number;
-};
+export type CursorTrailPoint = EffectPoint;
 
 export type RenderFrameInput = {
   beatmap: PreparedBeatmap;
@@ -408,11 +402,11 @@ export class PixiPlayfieldRenderer {
   ): void {
     for (const puff of puffs) {
       const age = gameTimeMs - puff.createdAtMs;
-      if (age < 0 || age > 900) {
+      if (age < 0 || age > SMOKE_LIFETIME_MS) {
         continue;
       }
 
-      const life = 1 - age / 900;
+      const life = 1 - age / SMOKE_LIFETIME_MS;
       const radius = (10 + age * 0.018) * transform.scale;
       const x = transform.offsetX + puff.x * transform.scale;
       const y = transform.offsetY + puff.y * transform.scale;
@@ -431,11 +425,11 @@ export class PixiPlayfieldRenderer {
     for (let index = 0; index < points.length; index += 1) {
       const point = points[index]!;
       const age = visualTimeMs - point.createdAtMs;
-      if (age < 0 || age > 260) {
+      if (age < 0 || age > CURSOR_TRAIL_LIFETIME_MS) {
         continue;
       }
 
-      const life = 1 - age / 260;
+      const life = 1 - age / CURSOR_TRAIL_LIFETIME_MS;
       const x = transform.offsetX + point.x * transform.scale;
       const y = transform.offsetY + point.y * transform.scale;
       const radius = (4 + life * 10) * transform.scale;

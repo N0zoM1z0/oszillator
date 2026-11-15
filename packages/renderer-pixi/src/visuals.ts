@@ -30,6 +30,15 @@ export const cyclePalette = (palette: readonly Rgb[], visualTimeMs: number): Rgb
 export const easeOutCubic = (value: number): number => 1 - (1 - value) ** 3;
 export const smoothstep = (value: number): number => value * value * (3 - 2 * value);
 export const JUDGED_OBJECT_FADE_MS = 320;
+export const SMOKE_LIFETIME_MS = 900;
+export const CURSOR_TRAIL_LIFETIME_MS = 260;
+
+/** A smoke or cursor-trail sample in playfield coordinates. */
+export type EffectPoint = {
+  x: number;
+  y: number;
+  createdAtMs: number;
+};
 
 export const objectVisualColour = (palette: readonly Rgb[], comboIndex: number, dynamicColours: boolean, gameTimeMs: number): Rgb =>
   dynamicColours ? pulseRgb(colourAt(palette, comboIndex), gameTimeMs, 0.22) : STATIC_OBJECT_COLOUR;

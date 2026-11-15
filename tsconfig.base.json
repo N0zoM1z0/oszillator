@@ -39,6 +39,9 @@
       "@oszillator/renderer-pixi": [
         "packages/renderer-pixi/src/index.ts"
       ],
+      "@oszillator/renderer-pixi/visuals": [
+        "packages/renderer-pixi/src/visuals.ts"
+      ],
       "@oszillator/ruleset-std": [
         "packages/ruleset-std/src/index.ts"
       ],
